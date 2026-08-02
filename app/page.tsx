@@ -187,7 +187,7 @@ export default function Home() {
     }
     setTurn("rival");
     setMessage(`${LABELS[difficulty].name} is thinking…`);
-    window.setTimeout(() => rivalMove(nextOwners, nextPlayed), 650);
+    window.setTimeout(() => rivalMove(nextOwners, nextPlayed), 1500);
   };
 
   if (screen === "home") return (
