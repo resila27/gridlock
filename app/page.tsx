@@ -33,7 +33,6 @@ wait wake walk wall want warm was wash watch water way wear week well west wet w
 yard year yellow yes yet you young your
 `.trim().split(/\s+/);
 
-const DICTIONARY = new Set(WORDS);
 const ORTHO = [[-1,-1],[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0],[1,1]];
 
 function shuffledLetters() {
@@ -101,6 +100,8 @@ export default function Home() {
   const [played, setPlayed] = useState<{ word: string; owner: 1 | 2 }[]>([]);
   const [turn, setTurn] = useState<"you" | "rival" | "done">("you");
   const [message, setMessage] = useState("Make any word");
+  const [wordError, setWordError] = useState("");
+  const [validating, setValidating] = useState(false);
 
   const locked = useMemo(() => protectedTiles(owners), [owners]);
   const currentWord = selected.map(i => letters[i]).join("").toLowerCase();
@@ -115,6 +116,7 @@ export default function Home() {
     setPlayed([]);
     setTurn("you");
     setMessage("Make any word");
+    setWordError("");
     setScreen("game");
   };
 
@@ -151,16 +153,33 @@ export default function Home() {
     setMessage(filled ? (nextOwners.filter(o=>o===1).length > nextOwners.filter(o=>o===2).length ? "You held the field!" : "The field is claimed") : `${LABELS[difficulty].name} played ${move.word.toUpperCase()}`);
   }, [applyClaim, difficulty, letters]);
 
-  const submit = () => {
+  const submit = async () => {
     if (turn !== "you") return;
-    if (currentWord.length < 2) { setMessage("Choose at least 2 letters"); return; }
-    if (!DICTIONARY.has(currentWord)) { setMessage("That word isn’t in this board’s dictionary"); return; }
-    if (played.some(p => p.word === currentWord)) { setMessage("That word has already been played"); return; }
+    if (currentWord.length < 2) { setWordError("Choose at least 2 letters"); return; }
+    if (played.some(p => p.word === currentWord)) { setWordError("That word has already been played"); return; }
+    setValidating(true);
+    let valid = false;
+    try {
+      const response = await fetch("/api/validate", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ word: currentWord }),
+      });
+      const result = await response.json() as { valid?: boolean };
+      valid = response.ok && result.valid === true;
+    } catch {
+      setWordError("Couldn’t check that word. Try again.");
+      return;
+    } finally {
+      setValidating(false);
+    }
+    if (!valid) { setWordError(`${currentWord.toUpperCase()} isn’t in the dictionary`); return; }
     const nextOwners = applyClaim(selected, 1, owners);
     const nextPlayed = [...played, { word: currentWord, owner: 1 as const }];
     setOwners(nextOwners);
     setPlayed(nextPlayed);
     setSelected([]);
+    setWordError("");
     if (nextOwners.every(Boolean)) {
       setTurn("done");
       setMessage(nextOwners.filter(o=>o===1).length > nextOwners.filter(o=>o===2).length ? "You held the field!" : "The field is claimed");
@@ -227,19 +246,20 @@ export default function Home() {
         {currentWord ? (
           <div className="word-builder" aria-live="polite">
             <div className="word-actions">
-              <button className="clear-word" onClick={() => setSelected([])}>Clear</button>
-              <button className="submit-word" disabled={turn !== "you" || currentWord.length < 2} onClick={submit}>Submit</button>
+              <button className="clear-word" onClick={() => { setSelected([]); setWordError(""); }}>Clear</button>
+              <button className="submit-word" disabled={validating || turn !== "you" || currentWord.length < 2} onClick={submit}>{validating ? "Checking…" : "Submit"}</button>
             </div>
             <div className="assembled-word" aria-label={`Selected word: ${currentWord}`}>
               {selected.map(i => (
                 <button
                   key={i}
                   className={`word-letter owner-${owners[i]} ${locked[i] ? "locked" : ""}`}
-                  onClick={() => setSelected(s => s.filter(x => x !== i))}
+                  onClick={() => { setSelected(s => s.filter(x => x !== i)); setWordError(""); }}
                   aria-label={`Remove ${letters[i]} from word`}
                 >{letters[i]}</button>
               ))}
             </div>
+            <p className={`word-feedback ${wordError ? "visible" : ""}`} role="alert">{wordError || "Ready to submit"}</p>
           </div>
         ) : (
           <div className="word-tray" aria-live="polite"><span>{message}</span></div>
@@ -255,7 +275,7 @@ export default function Home() {
               disabled={turn !== "you"}
               className={`tile owner-${owner} ${locked[i] ? "locked" : ""} ${isSelected ? "vacated" : ""}`}
               key={i}
-              onClick={() => setSelected(s => s.includes(i) ? s.filter(x => x !== i) : [...s, i])}
+              onClick={() => { setSelected(s => s.includes(i) ? s.filter(x => x !== i) : [...s, i]); setWordError(""); }}
             >{letter}{locked[i] && <i>◆</i>}</button>;
           })}
         </div>
