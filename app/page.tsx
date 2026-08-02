@@ -224,10 +224,26 @@ export default function Home() {
       </section>
 
       <section className="play-area">
-        <div className={`word-tray ${currentWord ? "has-word" : ""}`} aria-live="polite">
-          <span>{currentWord || message}</span>
-          {currentWord && <button onClick={() => setSelected([])} aria-label="Clear word">×</button>}
-        </div>
+        {currentWord ? (
+          <div className="word-builder" aria-live="polite">
+            <div className="word-actions">
+              <button className="clear-word" onClick={() => setSelected([])}>Clear</button>
+              <button className="submit-word" disabled={turn !== "you" || currentWord.length < 2} onClick={submit}>Submit</button>
+            </div>
+            <div className="assembled-word" aria-label={`Selected word: ${currentWord}`}>
+              {selected.map(i => (
+                <button
+                  key={i}
+                  className={`word-letter owner-${owners[i]} ${locked[i] ? "locked" : ""}`}
+                  onClick={() => setSelected(s => s.filter(x => x !== i))}
+                  aria-label={`Remove ${letters[i]} from word`}
+                >{letters[i]}</button>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <div className="word-tray" aria-live="polite"><span>{message}</span></div>
+        )}
         <div className="board" role="grid" aria-label="Letter board">
           {letters.map((letter, i) => {
             const owner = owners[i];
@@ -237,7 +253,7 @@ export default function Home() {
               aria-label={`${letter}${owner === 1 ? ", yours" : owner === 2 ? ", rival’s" : ""}${locked[i] ? ", locked" : ""}`}
               aria-pressed={isSelected}
               disabled={turn !== "you"}
-              className={`tile owner-${owner} ${locked[i] ? "locked" : ""} ${isSelected ? "selected" : ""}`}
+              className={`tile owner-${owner} ${locked[i] ? "locked" : ""} ${isSelected ? "vacated" : ""}`}
               key={i}
               onClick={() => setSelected(s => s.includes(i) ? s.filter(x => x !== i) : [...s, i])}
             >{letter}{locked[i] && <i>◆</i>}</button>;
@@ -247,7 +263,7 @@ export default function Home() {
 
       <footer className="game-controls">
         <div className="last-play">{played.length ? <><span className={played.at(-1)?.owner === 1 ? "blue-dot" : "coral-dot"}></span>{played.at(-1)?.word.toUpperCase()}</> : "First move is yours"}</div>
-        {turn === "done" ? <button className="primary" onClick={() => newGame()}>Play again</button> : <button className="primary" disabled={!currentWord || turn !== "you"} onClick={submit}>Claim {currentWord && `“${currentWord.toUpperCase()}”`}</button>}
+        {turn === "done" && <button className="primary" onClick={() => newGame()}>Play again</button>}
       </footer>
     </main>
   );
