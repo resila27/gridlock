@@ -150,7 +150,7 @@ export default function Home() {
     setPlayed(nextPlayed);
     const filled = nextOwners.every(Boolean);
     setTurn(filled ? "done" : "you");
-    setMessage(filled ? (nextOwners.filter(o=>o===1).length > nextOwners.filter(o=>o===2).length ? "You held the field!" : "The field is claimed") : `${LABELS[difficulty].name} played ${move.word.toUpperCase()}`);
+    setMessage(filled ? (nextOwners.filter(o=>o===1).length > nextOwners.filter(o=>o===2).length ? "You locked the grid!" : "The grid is claimed") : `${LABELS[difficulty].name} played ${move.word.toUpperCase()}`);
   }, [applyClaim, difficulty, letters]);
 
   const submit = async () => {
@@ -182,7 +182,7 @@ export default function Home() {
     setWordError("");
     if (nextOwners.every(Boolean)) {
       setTurn("done");
-      setMessage(nextOwners.filter(o=>o===1).length > nextOwners.filter(o=>o===2).length ? "You held the field!" : "The field is claimed");
+      setMessage(nextOwners.filter(o=>o===1).length > nextOwners.filter(o=>o===2).length ? "You locked the grid!" : "The grid is claimed");
       return;
     }
     setTurn("rival");
@@ -197,8 +197,8 @@ export default function Home() {
           {["W","O","R","D","H","O","L","D","S"].map((l,i)=><span key={i}>{l}</span>)}
         </div>
         <p className="eyebrow">A battle of words</p>
-        <h1>Wordhold</h1>
-        <p className="lede">Find words. Claim the field.<br/>Surround letters to make them yours for good.</p>
+        <h1>GRIDLOCK</h1>
+        <p className="lede">Find words. Claim the grid.<br/>Surround letters to make them yours for good.</p>
       </section>
       <section className="level-picker" aria-labelledby="choose-level">
         <p id="choose-level" className="picker-label">Choose your rival</p>
@@ -218,7 +218,7 @@ export default function Home() {
     <main className="rules-shell">
       <button className="back" onClick={() => setScreen("home")} aria-label="Back">←</button>
       <p className="eyebrow">Three simple rules</p>
-      <h2>Hold the field</h2>
+      <h2>Lock the grid</h2>
       <div className="rules-list">
         <article><span>1</span><div><h3>Make a word</h3><p>Tap letters in any order. Every letter you use becomes yours.</p></div></article>
         <article><span>2</span><div><h3>Steal their letters</h3><p>Use a rival’s letter in your word and it changes to your color.</p></div></article>
@@ -232,7 +232,7 @@ export default function Home() {
     <main className="game-shell">
       <header className="game-topbar">
         <button className="icon-button" onClick={() => setScreen("home")} aria-label="Back to menu">←</button>
-        <div className="wordmark">WORDHOLD</div>
+        <div className="wordmark">GRIDLOCK</div>
         <button className="icon-button restart" onClick={() => newGame()} aria-label="New game">↻</button>
       </header>
 
