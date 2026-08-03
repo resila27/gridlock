@@ -1,9 +1,17 @@
 "use client";
 
-import { useCallback, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
-
-type Difficulty = "relaxed" | "clever" | "fierce";
-type Owner = 0 | 1 | 2;
+import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { AccountModal } from "./AccountModal";
+import {
+  getAccountStatus,
+  logout,
+  saveGame,
+  type AccountStats,
+  type AccountUser,
+  type Difficulty,
+  type Owner,
+  type SavedGame,
+} from "./api-client";
 
 const BASE_LETTERS = "STARECLOUDPINGMBEACHFORYT".split("");
 const WORDS = `
@@ -91,6 +99,10 @@ const LABELS: Record<Difficulty, { name: string; note: string; face: string }> =
   fierce: { name: "Fierce", note: "Protects and steals", face: "◉‿◉" },
 };
 
+function newGameId() {
+  return globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
 export default function Home() {
   const [screen, setScreen] = useState<"home" | "game" | "rules">("home");
   const [difficulty, setDifficulty] = useState<Difficulty>("clever");
@@ -103,6 +115,11 @@ export default function Home() {
   const [wordError, setWordError] = useState("");
   const [validating, setValidating] = useState(false);
   const [draggingTile, setDraggingTile] = useState<number | null>(null);
+  const [gameId, setGameId] = useState<string>(newGameId);
+  const [accountOpen, setAccountOpen] = useState(false);
+  const [account, setAccount] = useState<AccountUser | null>(null);
+  const [accountStats, setAccountStats] = useState<AccountStats>({ completed: 0, wins: 0 });
+  const [accountReady, setAccountReady] = useState(false);
   const dragRef = useRef({ tileId: null as number | null, startX: 0, startY: 0, moved: false });
   const suppressClickRef = useRef(false);
 
@@ -110,6 +127,44 @@ export default function Home() {
   const currentWord = selected.map(i => letters[i]).join("").toLowerCase();
   const yourScore = owners.filter(o => o === 1).length;
   const rivalScore = owners.filter(o => o === 2).length;
+
+  const restoreGame = useCallback((game: SavedGame) => {
+    setGameId(game.gameId);
+    setDifficulty(game.difficulty);
+    setLetters(game.letters);
+    setOwners(game.owners);
+    setPlayed(game.played);
+    setTurn(game.turn);
+    setMessage(game.message);
+    setSelected([]);
+    setWordError("");
+    setScreen("game");
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    getAccountStatus()
+      .then(result => {
+        if (cancelled) return;
+        setAccount(result.user);
+        setAccountStats(result.stats);
+        if (result.user && result.game) restoreGame(result.game);
+      })
+      .catch(() => undefined)
+      .finally(() => { if (!cancelled) setAccountReady(true); });
+    return () => { cancelled = true; };
+  }, [restoreGame]);
+
+  useEffect(() => {
+    if (!account || !accountReady || screen !== "game" || turn === "rival") return;
+    const result = turn === "done" ? (yourScore > rivalScore ? "win" : yourScore < rivalScore ? "loss" : "tie") : null;
+    const timer = window.setTimeout(() => {
+      void saveGame({ gameId, difficulty, letters, owners, played, turn, message, result })
+        .then(response => setAccountStats(response.stats))
+        .catch(() => undefined);
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [account, accountReady, difficulty, gameId, letters, message, owners, played, rivalScore, screen, turn, yourScore]);
 
   const startWordDrag = (event: ReactPointerEvent<HTMLButtonElement>, tileId: number) => {
     if (event.pointerType === "mouse" && event.button !== 0) return;
@@ -147,6 +202,7 @@ export default function Home() {
   };
 
   const newGame = (level = difficulty) => {
+    setGameId(newGameId());
     setDifficulty(level);
     setLetters(shuffledLetters());
     setOwners(Array(25).fill(0));
@@ -198,7 +254,7 @@ export default function Home() {
     setValidating(true);
     let valid = false;
     try {
-      const response = await fetch("/api/validate", {
+      const response = await fetch("/api/index.php?action=validate-word", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ word: currentWord }),
@@ -228,8 +284,34 @@ export default function Home() {
     window.setTimeout(() => rivalMove(nextOwners, nextPlayed), 3000);
   };
 
+  const completeLogin = (result: { game: SavedGame | null; stats: AccountStats; user: AccountUser }) => {
+    setAccount(result.user);
+    setAccountStats(result.stats);
+    if (result.game && screen !== "game") restoreGame(result.game);
+    setAccountReady(true);
+    setAccountOpen(false);
+  };
+
+  const signOut = async () => {
+    await logout();
+    setAccount(null);
+    setAccountStats({ completed: 0, wins: 0 });
+    setAccountOpen(false);
+  };
+
+  const accountModal = accountOpen ? (
+    <AccountModal
+      account={account}
+      stats={accountStats}
+      onClose={() => setAccountOpen(false)}
+      onLogin={completeLogin}
+      onLogout={signOut}
+    />
+  ) : null;
+
   if (screen === "home") return (
-    <main className="home-shell">
+    <><main className="home-shell">
+      <button className="account-chip home-account" onClick={() => setAccountOpen(true)} type="button">{account ? "My progress" : "Save progress"}</button>
       <section className="brand-block">
         <div className="mini-field" aria-hidden="true">
           {["W","O","R","D","H","O","L","D","S"].map((l,i)=><span key={i}>{l}</span>)}
@@ -249,11 +331,11 @@ export default function Home() {
         ))}
       </section>
       <button className="text-button" onClick={() => setScreen("rules")}>How to play</button>
-    </main>
+    </main>{accountModal}</>
   );
 
   if (screen === "rules") return (
-    <main className="rules-shell">
+    <><main className="rules-shell">
       <button className="back" onClick={() => setScreen("home")} aria-label="Back">←</button>
       <p className="eyebrow">Three simple rules</p>
       <h2>Lock the grid</h2>
@@ -263,15 +345,18 @@ export default function Home() {
         <article><span>3</span><div><h3>Build a stronghold</h3><p>Surround a letter with your color to lock it. Locked letters can’t be stolen.</p></div></article>
       </div>
       <button className="primary" onClick={() => newGame("relaxed")}>Play a relaxed game</button>
-    </main>
+    </main>{accountModal}</>
   );
 
   return (
-    <main className="game-shell">
+    <><main className="game-shell">
       <header className="game-topbar">
         <button className="icon-button" onClick={() => setScreen("home")} aria-label="Back to menu">←</button>
         <div className="wordmark">GRIDLOCK</div>
-        <button className="icon-button restart" onClick={() => newGame()} aria-label="New game">↻</button>
+        <div className="topbar-actions">
+          <button className="account-chip" onClick={() => setAccountOpen(true)} type="button">{account ? "Stats" : "Save"}</button>
+          <button className="icon-button restart" onClick={() => newGame()} aria-label="New game">↻</button>
+        </div>
       </header>
 
       <section className="scoreboard">
@@ -330,8 +415,9 @@ export default function Home() {
 
       <footer className="game-controls">
         <div className="last-play">{played.length ? <><span className={played.at(-1)?.owner === 1 ? "blue-dot" : "coral-dot"}></span>{played.at(-1)?.word.toUpperCase()}</> : "First move is yours"}</div>
+        {!account && <button className="save-progress-link" onClick={() => setAccountOpen(true)} type="button">Save this game across devices</button>}
         {turn === "done" && <button className="primary" onClick={() => newGame()}>Play again</button>}
       </footer>
-    </main>
+    </main>{accountModal}</>
   );
 }

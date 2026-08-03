@@ -1,0 +1,289 @@
+<?php
+declare(strict_types=1);
+
+header('Content-Type: application/json; charset=utf-8');
+header('Cache-Control: no-store');
+header('X-Content-Type-Options: nosniff');
+
+function respond(array $payload, int $status = 200): never {
+    http_response_code($status);
+    echo json_encode($payload, JSON_UNESCAPED_SLASHES);
+    exit;
+}
+
+function body(): array {
+    $decoded = json_decode((string) file_get_contents('php://input'), true);
+    return is_array($decoded) ? $decoded : [];
+}
+
+function app_config(): array {
+    static $config;
+    if (is_array($config)) return $config;
+    $path = dirname(__DIR__, 2) . '/gridlock-config.php';
+    if (!is_file($path)) throw new RuntimeException('Server configuration is unavailable.');
+    $loaded = require $path;
+    if (!is_array($loaded)) throw new RuntimeException('Server configuration is invalid.');
+    return $config = $loaded;
+}
+
+function db(): PDO {
+    static $pdo;
+    if ($pdo instanceof PDO) return $pdo;
+    $config = app_config();
+    $pdo = new PDO('sqlite:' . $config['db_path'], null, null, [
+        PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+        PDO::ATTR_EMULATE_PREPARES => false,
+        PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+    ]);
+    $pdo->exec('PRAGMA foreign_keys = ON');
+    $pdo->exec('PRAGMA busy_timeout = 5000');
+    return $pdo;
+}
+
+function current_user(): ?array {
+    $token = $_COOKIE['gridlock_session'] ?? '';
+    if (!is_string($token) || strlen($token) < 32) return null;
+    $statement = db()->prepare(
+        'SELECT users.id, users.email FROM sessions JOIN users ON users.id = sessions.user_id '
+        . 'WHERE sessions.token_hash = ? AND sessions.expires_at > ? LIMIT 1'
+    );
+    $statement->execute([hash('sha256', $token), gmdate('Y-m-d H:i:s')]);
+    $user = $statement->fetch();
+    return $user ?: null;
+}
+
+function require_user(): array {
+    $user = current_user();
+    if (!$user) respond(['error' => 'Please log in first.'], 401);
+    return $user;
+}
+
+function stats_for_user(int $userId): array {
+    $statement = db()->prepare(
+        "SELECT COUNT(*) AS completed, SUM(CASE WHEN result = 'win' THEN 1 ELSE 0 END) AS wins "
+        . 'FROM games WHERE user_id = ? AND completed_at IS NOT NULL'
+    );
+    $statement->execute([$userId]);
+    $row = $statement->fetch() ?: [];
+    return ['completed' => (int) ($row['completed'] ?? 0), 'wins' => (int) ($row['wins'] ?? 0)];
+}
+
+function latest_game(int $userId): ?array {
+    $statement = db()->prepare(
+        'SELECT state_json FROM games WHERE user_id = ? AND completed_at IS NULL ORDER BY updated_at DESC LIMIT 1'
+    );
+    $statement->execute([$userId]);
+    $row = $statement->fetch();
+    if (!$row) return null;
+    $game = json_decode((string) $row['state_json'], true);
+    return is_array($game) ? $game : null;
+}
+
+function word_set(): array {
+    static $words;
+    if (is_array($words)) return $words;
+    $decoded = json_decode((string) file_get_contents(__DIR__ . '/data/words.json'), true);
+    if (!is_array($decoded)) throw new RuntimeException('Dictionary is unavailable.');
+    return $words = array_fill_keys($decoded, true);
+}
+
+function inflection_roots(string $word): array {
+    $roots = [];
+    $add = static function (string ...$values) use (&$roots): void {
+        foreach ($values as $value) if (strlen($value) >= 2) $roots[$value] = true;
+    };
+    if (str_ends_with($word, 'ies')) $add(substr($word, 0, -3) . 'y');
+    if (str_ends_with($word, 'es')) $add(substr($word, 0, -2), substr($word, 0, -1));
+    if (str_ends_with($word, 's')) $add(substr($word, 0, -1));
+    if (str_ends_with($word, 'ied')) $add(substr($word, 0, -3) . 'y');
+    if (str_ends_with($word, 'ed')) {
+        $stem = substr($word, 0, -2); $add($stem, $stem . 'e');
+        if (strlen($stem) > 1 && $stem[-1] === $stem[-2]) $add(substr($stem, 0, -1));
+    }
+    if (str_ends_with($word, 'ying')) $add(substr($word, 0, -4) . 'ie');
+    if (str_ends_with($word, 'ing')) {
+        $stem = substr($word, 0, -3); $add($stem, $stem . 'e');
+        if (strlen($stem) > 1 && $stem[-1] === $stem[-2]) $add(substr($stem, 0, -1));
+    }
+    if (str_ends_with($word, 'er')) $add(substr($word, 0, -2), substr($word, 0, -1) . 'e');
+    if (str_ends_with($word, 'est')) $add(substr($word, 0, -3), substr($word, 0, -2) . 'e');
+    if (str_ends_with($word, 'ly')) $add(substr($word, 0, -2), substr($word, 0, -3) . 'y');
+    if (str_ends_with($word, 'ness')) $add(substr($word, 0, -4), substr($word, 0, -5) . 'y');
+    return array_keys($roots);
+}
+
+function valid_word(string $word): bool {
+    if (!preg_match('/^[a-z]{2,25}$/', $word)) return false;
+    $dictionary = word_set();
+    if (isset($dictionary[$word])) return true;
+    foreach (inflection_roots($word) as $root) if (isset($dictionary[$root])) return true;
+    return false;
+}
+
+function validated_game(array $input): array {
+    $gameId = (string) ($input['gameId'] ?? '');
+    $difficulty = (string) ($input['difficulty'] ?? '');
+    $letters = $input['letters'] ?? null;
+    $owners = $input['owners'] ?? null;
+    $played = $input['played'] ?? null;
+    $turn = (string) ($input['turn'] ?? '');
+    $message = trim((string) ($input['message'] ?? ''));
+    $result = $input['result'] ?? null;
+
+    if (!preg_match('/^[A-Za-z0-9-]{8,64}$/', $gameId)) respond(['error' => 'Invalid game.'], 422);
+    if (!in_array($difficulty, ['relaxed', 'clever', 'fierce'], true)) respond(['error' => 'Invalid game.'], 422);
+    if (!is_array($letters) || count($letters) !== 25 || !is_array($owners) || count($owners) !== 25) respond(['error' => 'Invalid game.'], 422);
+    $cleanLetters = [];
+    $cleanOwners = [];
+    foreach ($letters as $letter) {
+        $letter = (string) $letter;
+        if (!preg_match('/^[A-Z]$/', $letter)) respond(['error' => 'Invalid game.'], 422);
+        $cleanLetters[] = $letter;
+    }
+    foreach ($owners as $owner) {
+        if (!is_int($owner) || $owner < 0 || $owner > 2) respond(['error' => 'Invalid game.'], 422);
+        $cleanOwners[] = $owner;
+    }
+    if (!is_array($played) || count($played) > 100) respond(['error' => 'Invalid game.'], 422);
+    $cleanPlayed = [];
+    foreach ($played as $play) {
+        if (!is_array($play)) respond(['error' => 'Invalid game.'], 422);
+        $word = strtolower((string) ($play['word'] ?? ''));
+        $owner = $play['owner'] ?? null;
+        if (!preg_match('/^[a-z]{2,25}$/', $word) || !in_array($owner, [1, 2], true)) respond(['error' => 'Invalid game.'], 422);
+        $cleanPlayed[] = ['word' => $word, 'owner' => $owner];
+    }
+    if (!in_array($turn, ['you', 'rival', 'done'], true) || strlen($message) > 120) respond(['error' => 'Invalid game.'], 422);
+    if (!in_array($result, [null, 'win', 'loss', 'tie'], true)) respond(['error' => 'Invalid game.'], 422);
+    if (($turn === 'done') !== ($result !== null)) respond(['error' => 'Invalid game.'], 422);
+
+    return [
+        'gameId' => $gameId, 'difficulty' => $difficulty, 'letters' => $cleanLetters,
+        'owners' => $cleanOwners, 'played' => $cleanPlayed, 'turn' => $turn,
+        'message' => $message, 'result' => $result,
+    ];
+}
+
+try {
+    $action = (string) ($_GET['action'] ?? 'status');
+
+    if ($action === 'status') {
+        $user = current_user();
+        respond([
+            'game' => $user ? latest_game((int) $user['id']) : null,
+            'stats' => $user ? stats_for_user((int) $user['id']) : ['completed' => 0, 'wins' => 0],
+            'user' => $user ? ['email' => $user['email']] : null,
+        ]);
+    }
+
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') respond(['error' => 'Method not allowed.'], 405);
+
+    if ($action === 'validate-word') {
+        $word = strtolower(trim((string) (body()['word'] ?? '')));
+        respond(['valid' => valid_word($word)]);
+    }
+
+    if ($action === 'request-code') {
+        $email = strtolower(trim((string) (body()['email'] ?? '')));
+        if (!filter_var($email, FILTER_VALIDATE_EMAIL) || strlen($email) > 254) respond(['error' => 'Enter a valid email address.'], 422);
+        $config = app_config();
+        $ipHash = hash_hmac('sha256', (string) ($_SERVER['REMOTE_ADDR'] ?? ''), $config['app_secret']);
+        $rate = db()->prepare(
+            'SELECT SUM(email = ?) AS email_count, SUM(ip_hash = ?) AS ip_count FROM login_codes WHERE created_at > ?'
+        );
+        $rate->execute([$email, $ipHash, gmdate('Y-m-d H:i:s', time() - 3600)]);
+        $counts = $rate->fetch();
+        if ((int) ($counts['email_count'] ?? 0) >= 5 || (int) ($counts['ip_count'] ?? 0) >= 12) {
+            respond(['error' => 'Too many codes requested. Try again later.'], 429);
+        }
+        $code = (string) random_int(100000, 999999);
+        $codeHash = hash_hmac('sha256', $email . ':' . $code, $config['app_secret']);
+        $statement = db()->prepare(
+            'INSERT INTO login_codes (email, code_hash, ip_hash, expires_at, created_at) VALUES (?, ?, ?, ?, ?)'
+        );
+        $statement->execute([$email, $codeHash, $ipHash, gmdate('Y-m-d H:i:s', time() + 600), gmdate('Y-m-d H:i:s')]);
+        $subject = 'Your GRIDLOCK login code';
+        $message = "Your GRIDLOCK code is {$code}.\n\nIt expires in 10 minutes. If you did not request it, you can ignore this email.";
+        $headers = "From: GRIDLOCK <play@typty.com>\r\nContent-Type: text/plain; charset=UTF-8";
+        if (!mail($email, $subject, $message, $headers)) respond(['error' => 'We could not send the email. Please try again.'], 503);
+        respond(['ok' => true]);
+    }
+
+    if ($action === 'verify-code') {
+        $input = body();
+        $email = strtolower(trim((string) ($input['email'] ?? '')));
+        $code = preg_replace('/\D/', '', (string) ($input['code'] ?? ''));
+        if (!filter_var($email, FILTER_VALIDATE_EMAIL) || strlen($code) !== 6) respond(['error' => 'That code is not valid.'], 422);
+        $statement = db()->prepare(
+            'SELECT * FROM login_codes WHERE email = ? AND used_at IS NULL AND expires_at > ? ORDER BY id DESC LIMIT 1'
+        );
+        $statement->execute([$email, gmdate('Y-m-d H:i:s')]);
+        $record = $statement->fetch();
+        $expected = hash_hmac('sha256', $email . ':' . $code, app_config()['app_secret']);
+        if (!$record || (int) $record['attempts'] >= 6 || !hash_equals($record['code_hash'], $expected)) {
+            if ($record) db()->prepare('UPDATE login_codes SET attempts = attempts + 1 WHERE id = ?')->execute([$record['id']]);
+            respond(['error' => 'That code is not valid or has expired.'], 422);
+        }
+        db()->beginTransaction();
+        db()->prepare('UPDATE login_codes SET used_at = ? WHERE id = ?')->execute([gmdate('Y-m-d H:i:s'), $record['id']]);
+        $userStatement = db()->prepare('SELECT id, email FROM users WHERE email = ?');
+        $userStatement->execute([$email]);
+        $user = $userStatement->fetch();
+        if (!$user) {
+            db()->prepare('INSERT INTO users (email, created_at) VALUES (?, ?)')->execute([$email, gmdate('Y-m-d H:i:s')]);
+            $userStatement->execute([$email]);
+            $user = $userStatement->fetch();
+        }
+        $token = bin2hex(random_bytes(32));
+        db()->prepare('INSERT INTO sessions (user_id, token_hash, expires_at, created_at) VALUES (?, ?, ?, ?)')
+            ->execute([$user['id'], hash('sha256', $token), gmdate('Y-m-d H:i:s', time() + 180 * 86400), gmdate('Y-m-d H:i:s')]);
+        db()->commit();
+        setcookie('gridlock_session', $token, [
+            'expires' => time() + 180 * 86400, 'httponly' => true, 'path' => '/', 'samesite' => 'Lax', 'secure' => true,
+        ]);
+        respond([
+            'game' => latest_game((int) $user['id']),
+            'stats' => stats_for_user((int) $user['id']),
+            'user' => ['email' => $user['email']],
+        ]);
+    }
+
+    if ($action === 'logout') {
+        $token = $_COOKIE['gridlock_session'] ?? '';
+        if (is_string($token) && $token !== '') db()->prepare('DELETE FROM sessions WHERE token_hash = ?')->execute([hash('sha256', $token)]);
+        setcookie('gridlock_session', '', ['expires' => 1, 'httponly' => true, 'path' => '/', 'samesite' => 'Lax', 'secure' => true]);
+        respond(['ok' => true]);
+    }
+
+    if ($action === 'save-game') {
+        $user = require_user();
+        $game = validated_game(body());
+        $now = gmdate('Y-m-d H:i:s');
+        $completedAt = $game['result'] === null ? null : $now;
+        $existing = db()->prepare('SELECT id, completed_at FROM games WHERE user_id = ? AND game_id = ? LIMIT 1');
+        $existing->execute([$user['id'], $game['gameId']]);
+        $row = $existing->fetch();
+        if ($row && $row['completed_at']) {
+            respond(['game' => $game, 'stats' => stats_for_user((int) $user['id'])]);
+        }
+        $state = json_encode($game, JSON_UNESCAPED_SLASHES);
+        if ($row) {
+            $statement = db()->prepare(
+                'UPDATE games SET difficulty = ?, state_json = ?, completed_at = ?, result = ?, updated_at = ? WHERE id = ?'
+            );
+            $statement->execute([$game['difficulty'], $state, $completedAt, $game['result'], $now, $row['id']]);
+        } else {
+            $statement = db()->prepare(
+                'INSERT INTO games (user_id, game_id, difficulty, state_json, completed_at, result, updated_at, created_at) '
+                . 'VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+            );
+            $statement->execute([$user['id'], $game['gameId'], $game['difficulty'], $state, $completedAt, $game['result'], $now, $now]);
+        }
+        respond(['game' => $game, 'stats' => stats_for_user((int) $user['id'])]);
+    }
+
+    respond(['error' => 'Not found.'], 404);
+} catch (Throwable $error) {
+    error_log('GRIDLOCK API: ' . $error->getMessage());
+    respond(['error' => 'The server could not complete that request.'], 500);
+}
