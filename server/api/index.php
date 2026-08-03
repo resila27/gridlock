@@ -265,20 +265,42 @@ try {
         $word = strtolower(trim((string) (body()['word'] ?? '')));
         if (!preg_match('/^[a-z]{2,25}$/', $word)) respond(['error' => 'Invalid word.'], 422);
         $context = stream_context_create(['http' => ['timeout' => 5, 'header' => "User-Agent: GRIDLOCK/1.0\r\n"]]);
-        $raw = @file_get_contents('https://api.dictionaryapi.dev/api/v2/entries/en/' . rawurlencode($word), false, $context);
-        $entries = is_string($raw) ? json_decode($raw, true) : null;
         $definition = null;
-        if (is_array($entries)) {
-            foreach (($entries[0]['meanings'] ?? []) as $meaning) {
-                foreach (($meaning['definitions'] ?? []) as $item) {
-                    if (is_string($item['definition'] ?? null) && trim($item['definition']) !== '') {
-                        $definition = trim($item['definition']);
-                        break 2;
+        $source = null;
+
+        $datamuseRaw = @file_get_contents('https://api.datamuse.com/words?sp=' . rawurlencode($word) . '&md=d&max=3', false, $context);
+        $datamuseEntries = is_string($datamuseRaw) ? json_decode($datamuseRaw, true) : null;
+        if (is_array($datamuseEntries)) {
+            foreach ($datamuseEntries as $entry) {
+                if (strtolower((string) ($entry['word'] ?? '')) !== $word || !is_array($entry['defs'] ?? null)) continue;
+                $rawDefinition = $entry['defs'][0] ?? null;
+                if (!is_string($rawDefinition) || trim($rawDefinition) === '') continue;
+                $parts = explode("\t", trim($rawDefinition), 2);
+                $labels = ['adj' => 'adjective', 'adv' => 'adverb', 'n' => 'noun', 'v' => 'verb'];
+                $definition = count($parts) === 2
+                    ? (($labels[$parts[0]] ?? $parts[0]) . ' — ' . trim($parts[1]))
+                    : trim($rawDefinition);
+                $source = 'Datamuse';
+                break;
+            }
+        }
+
+        if ($definition === null) {
+            $raw = @file_get_contents('https://api.dictionaryapi.dev/api/v2/entries/en/' . rawurlencode($word), false, $context);
+            $entries = is_string($raw) ? json_decode($raw, true) : null;
+            if (is_array($entries)) {
+                foreach (($entries[0]['meanings'] ?? []) as $meaning) {
+                    foreach (($meaning['definitions'] ?? []) as $item) {
+                        if (is_string($item['definition'] ?? null) && trim($item['definition']) !== '') {
+                            $definition = trim($item['definition']);
+                            $source = 'Free Dictionary API';
+                            break 2;
+                        }
                     }
                 }
             }
         }
-        respond(['definition' => $definition]);
+        respond(['definition' => $definition, 'source' => $source]);
     }
 
     if ($action === 'request-code') {

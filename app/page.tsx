@@ -460,7 +460,7 @@ export default function Home() {
   const [dailyStanding, setDailyStanding] = useState<DailyStanding | null>(null);
   const [resultsOpen, setResultsOpen] = useState(false);
   const [shareStatus, setShareStatus] = useState("");
-  const [definition, setDefinition] = useState<{ word: string; text: string; loading: boolean } | null>(null);
+  const [definition, setDefinition] = useState<{ word: string; text: string; loading: boolean; source?: string } | null>(null);
   const [recentlyClaimed, setRecentlyClaimed] = useState<number[]>([]);
   const [tutorialOpen, setTutorialOpen] = useState(false);
   const [tutorialPage, setTutorialPage] = useState(0);
@@ -471,6 +471,10 @@ export default function Home() {
   const currentWord = selected.map(i => letters[i]).join("").toLowerCase();
   const yourScore = owners.filter(o => o === 1).length;
   const rivalScore = owners.filter(o => o === 2).length;
+  const projectedOwners = useMemo(() => selected.length && turn === "you" ? claimTiles(selected, 1, owners) : owners, [owners, selected, turn]);
+  const projectedYourScore = projectedOwners.filter(o => o === 1).length;
+  const projectedRivalScore = projectedOwners.filter(o => o === 2).length;
+  const showingProjectedScore = selected.length > 0 && turn === "you";
   const longestWord = played.reduce((best, play) => play.word.length > best.length ? play.word : best, "");
   const biggestSteal = played.filter(play => play.owner === 1).reduce((best, play) => Math.max(best, play.captures ?? 0), 0);
   const result = yourScore > rivalScore ? "win" : yourScore < rivalScore ? "loss" : "tie";
@@ -686,8 +690,9 @@ export default function Home() {
       const response = await fetch("/api/index.php?action=define-word", {
         body: JSON.stringify({ word }), headers: { "content-type": "application/json" }, method: "POST",
       });
-      const entry = await response.json() as { definition?: string | null };
-      setDefinition({ word, text: entry.definition || "No definition was found for this word.", loading: false });
+      const entry = await response.json() as { definition?: string | null; source?: string | null };
+      if (!response.ok) throw new Error("Definition request failed");
+      setDefinition({ word, text: entry.definition || "No definition was found for this word.", loading: false, source: entry.source || undefined });
     } catch {
       setDefinition({ word, text: "The definition is unavailable right now.", loading: false });
     }
@@ -732,7 +737,7 @@ export default function Home() {
         <p className="eyebrow">Word played</p>
         <h2 id="definition-title">{definition.word.toUpperCase()}</h2>
         <p>{definition.loading ? "Looking it up…" : definition.text}</p>
-        <small>Definition provided by Free Dictionary API</small>
+        {definition.source && <small>Definition provided by {definition.source}</small>}
       </section>
     </div>
   ) : null;
@@ -801,9 +806,9 @@ export default function Home() {
       </header>
 
       <section className="scoreboard">
-        <div className="player you"><span className="face">YOU</span><strong>{yourScore}</strong></div>
+        <div className={`player you ${showingProjectedScore ? "score-preview" : ""}`}><span className="face">YOU</span><strong key={`you-${projectedYourScore}-${selected.length}`} aria-label={showingProjectedScore ? `Projected score ${projectedYourScore}` : `Score ${yourScore}`}>{projectedYourScore}</strong></div>
         <div className="turn-status"><span className={turn}></span>{turn === "you" ? "your turn" : turn === "rival" ? "thinking" : "game over"}</div>
-        <div className={`player rival ${difficulty}`}><span className="face">{LABELS[difficulty].face}</span><strong>{rivalScore}</strong><small>{LABELS[difficulty].name}</small></div>
+        <div className={`player rival ${difficulty} ${showingProjectedScore ? "score-preview" : ""}`}><span className="face">{LABELS[difficulty].face}</span><strong key={`rival-${projectedRivalScore}-${selected.length}`} aria-label={showingProjectedScore ? `Projected rival score ${projectedRivalScore}` : `Rival score ${rivalScore}`}>{projectedRivalScore}</strong><small>{LABELS[difficulty].name}</small></div>
       </section>
 
       <section className="play-area">
