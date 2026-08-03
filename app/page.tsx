@@ -389,7 +389,7 @@ const TUTORIAL_SLIDES = [
 const TUTORIAL_DEMOS = {
   claim: {
     word: "SCORE",
-    letters: "SCAMPORELTNDEIUBGHKYFJQVXWAZO".slice(0, BOARD_SIZE).split(""),
+    letters: "SCAMPORELTNDEIUBGHKYFJQVXWAZON".slice(0, BOARD_SIZE).split(""),
     selected: [0, 1, 6, 7, 8],
     own: [],
     rival: [],
@@ -399,7 +399,7 @@ const TUTORIAL_DEMOS = {
   },
   steal: {
     word: "STONEWALL",
-    letters: "STONEWALLRCIDPUBGHKYFJQVXMEAZ".slice(0, BOARD_SIZE).split(""),
+    letters: "STONEWALLRCIDPUBGHKYFJQVXMEAZR".slice(0, BOARD_SIZE).split(""),
     selected: [0, 1, 2, 3, 4, 5, 6, 7, 8],
     own: [],
     rival: [0, 3, 5, 7, 12, 14],
@@ -409,7 +409,7 @@ const TUTORIAL_DEMOS = {
   },
   corner: {
     word: "ROOTS",
-    letters: "ROAINOTSELCDMPUBGHKYFJQVXWAEZ".slice(0, BOARD_SIZE).split(""),
+    letters: "ROAINOTSELCDMPUBGHKYFJQVXWAEZT".slice(0, BOARD_SIZE).split(""),
     selected: [0, 1, 6, 7, 8],
     own: [],
     rival: [],
