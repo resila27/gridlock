@@ -465,7 +465,7 @@ function TutorialDemo({ kind }: { kind: typeof TUTORIAL_SLIDES[number]["kind"] }
           className={`${hasTutorialTile(demo.own, i) ? "demo-own" : ""} ${hasTutorialTile(demo.rival, i) ? "demo-rival" : ""} ${hasTutorialTile(demo.selected, i) ? "demo-selected" : ""} ${hasTutorialTile(demo.changing, i) ? "demo-changing" : ""} ${hasTutorialTile(demo.locked, i) ? "demo-locks" : ""} ${hasTutorialTile(demo.unlocking, i) ? "demo-unlocking" : ""}`}
           key={i}
           style={{ "--tile-delay": `${Math.max(0, (demo.selected as readonly number[]).indexOf(i)) * .2}s` } as CSSProperties}
-        >{letter}{(hasTutorialTile(demo.locked, i) || hasTutorialTile(demo.unlocking, i)) && <i>◆</i>}</span>)}
+        >{letter}{(hasTutorialTile(demo.locked, i) || hasTutorialTile(demo.unlocking, i)) && <i>🔑</i>}</span>)}
       </div>
     </div>
   );
@@ -988,7 +988,7 @@ export default function Home() {
               key={i}
               style={{ "--claim-delay": `${Math.max(0, claimEffect.tiles.indexOf(i)) * 70}ms` } as CSSProperties}
               onClick={() => { setSelected(s => s.includes(i) ? s.filter(x => x !== i) : [...s, i]); setWordError(""); }}
-            >{letter}{locked[i] && <i>◆</i>}</button>;
+            >{letter}{locked[i] && <i>🔑</i>}</button>;
           })}
         </div>
       </section>
