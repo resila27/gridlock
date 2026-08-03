@@ -42,6 +42,7 @@ yard year yellow yes yet you young your
 `.trim().split(/\s+/);
 
 const ORTHO = [[-1,-1],[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0],[1,1]];
+const CORNERS = [0, 4, 20, 24];
 
 function shuffledLetters() {
   const a = [...BASE_LETTERS];
@@ -63,6 +64,76 @@ function protectedTiles(owners: Owner[]) {
   return owners.map((owner, i) => owner !== 0 && neighbors(i).every(n => owners[n] === owner));
 }
 
+export function claimTiles(tileIds: number[], owner: 1 | 2, source: Owner[]) {
+  const protectedNow = protectedTiles(source);
+  const next = [...source];
+  tileIds.forEach(i => {
+    if (!(source[i] !== 0 && source[i] !== owner && protectedNow[i])) next[i] = owner;
+  });
+  return next;
+}
+
+function manhattan(left: number, right: number) {
+  return Math.abs(Math.floor(left / 5) - Math.floor(right / 5)) + Math.abs(left % 5 - right % 5);
+}
+
+function largestTerritory(owners: Owner[], owner: 1 | 2) {
+  const remaining = new Set(owners.map((value, i) => value === owner ? i : -1).filter(i => i >= 0));
+  let largest = 0;
+  while (remaining.size) {
+    const start = remaining.values().next().value as number;
+    const queue = [start];
+    remaining.delete(start);
+    let size = 0;
+    while (queue.length) {
+      const current = queue.pop() as number;
+      size++;
+      neighbors(current).forEach(next => {
+        if (remaining.delete(next)) queue.push(next);
+      });
+    }
+    largest = Math.max(largest, size);
+  }
+  return largest;
+}
+
+function territoryValue(owners: Owner[], owner: 1 | 2) {
+  const opponent = owner === 1 ? 2 : 1;
+  const locked = protectedTiles(owners);
+  const owned = owners.map((value, i) => value === owner ? i : -1).filter(i => i >= 0);
+  const phase = Math.min(1, owned.length / 11);
+  const anchor = CORNERS.filter(i => owners[i] === owner)
+    .sort((a, b) => manhattan(a, 12) - manhattan(b, 12))[0];
+  let score = owned.length * 2.6 + largestTerritory(owners, owner) * 2.8;
+
+  owned.forEach(i => {
+    const adjacent = neighbors(i);
+    const friends = adjacent.filter(n => owners[n] === owner).length;
+    const enemies = adjacent.filter(n => owners[n] === opponent).length;
+    score += friends * 1.35 - enemies * .7;
+    if (locked[i]) score += 18;
+    else if (friends === adjacent.length - 1) score += 8;
+    else if (friends >= Math.ceil(adjacent.length * .6)) score += 3.5;
+    if (CORNERS.includes(i)) score += 11 - phase * 5;
+    else if (Math.floor(i / 5) === 0 || Math.floor(i / 5) === 4 || i % 5 === 0 || i % 5 === 4) score += 2.2;
+    if (anchor !== undefined) score += Math.max(0, 5 - manhattan(anchor, i)) * (1.5 - phase * .6);
+    score += Math.max(0, 4 - manhattan(i, 12)) * phase * 1.8;
+  });
+
+  owners.forEach((value, i) => {
+    if (value !== opponent || locked[i]) return;
+    const adjacent = neighbors(i);
+    const enemyFriends = adjacent.filter(n => owners[n] === opponent).length;
+    if (enemyFriends === adjacent.length - 1) score -= 10;
+    else if (enemyFriends >= Math.ceil(adjacent.length * .6)) score -= 4;
+  });
+  return score;
+}
+
+export function boardAdvantage(owners: Owner[], owner: 1 | 2) {
+  return territoryValue(owners, owner) - territoryValue(owners, owner === 1 ? 2 : 1);
+}
+
 function canForm(word: string, letters: string[]) {
   const available = [...letters];
   return [...word.toUpperCase()].every(letter => {
@@ -73,30 +144,54 @@ function canForm(word: string, letters: string[]) {
   });
 }
 
-function chooseTiles(word: string, letters: string[], owners: Owner[], difficulty: Difficulty) {
+export function chooseTiles(word: string, letters: string[], owners: Owner[], difficulty: Difficulty) {
   const locked = protectedTiles(owners);
   const used = new Set<number>();
-  return [...word.toUpperCase()].map(letter => {
+  const picks: number[] = [];
+  for (const letter of word.toUpperCase()) {
     const candidates = letters.map((l, i) => l === letter && !used.has(i) ? i : -1).filter(i => i >= 0);
     candidates.sort((a, b) => {
       const value = (i: number) => {
-        if (owners[i] === 1 && !locked[i]) return difficulty === "fierce" ? 9 : 5;
+        if (difficulty === "fierce") {
+          const next = claimTiles([...picks, i], 2, owners);
+          const capture = owners[i] === 1 && !locked[i] ? 12 : 0;
+          return boardAdvantage(next, 2) + capture;
+        }
+        if (owners[i] === 1 && !locked[i]) return 5;
         if (owners[i] === 0) return 3;
         if (owners[i] === 2) return 1;
         return -4;
       };
-      return value(b) - value(a) + (Math.random() - .5);
+      return value(b) - value(a) + (difficulty === "fierce" ? 0 : Math.random() - .5);
     });
     const pick = candidates[0];
     used.add(pick);
-    return pick;
-  });
+    picks.push(pick);
+  }
+  return picks;
+}
+
+function bestReplySwing(source: Owner[], letters: string[], usedWords: Set<string>) {
+  const before = boardAdvantage(source, 2);
+  const locked = protectedTiles(source);
+  const replies = WORDS.filter(word => word.length >= 3 && word.length <= 9 && !usedWords.has(word) && canForm(word, letters))
+    .map(word => {
+      const ids = chooseTiles(word, letters, source, "clever");
+      const captures = ids.filter(i => source[i] === 2 && !locked[i]).length;
+      return { ids, priority: word.length + captures * 5 };
+    })
+    .sort((a, b) => b.priority - a.priority)
+    .slice(0, 36);
+  return replies.reduce((worst, reply) => {
+    const after = boardAdvantage(claimTiles(reply.ids, 1, source), 2);
+    return Math.max(worst, before - after);
+  }, 0);
 }
 
 const LABELS: Record<Difficulty, { name: string; note: string; face: string }> = {
   relaxed: { name: "Relaxed", note: "A gentle first match", face: "◡" },
   clever: { name: "Clever", note: "Plans a few moves ahead", face: "•ᴗ•" },
-  fierce: { name: "Fierce", note: "Protects and steals", face: "◉‿◉" },
+  fierce: { name: "Fierce", note: "Builds territory and looks ahead", face: "◉‿◉" },
 };
 
 function newGameId() {
@@ -215,12 +310,7 @@ export default function Home() {
   };
 
   const applyClaim = useCallback((tileIds: number[], owner: 1 | 2, source: Owner[]) => {
-    const protectedNow = protectedTiles(source);
-    const next = [...source];
-    tileIds.forEach(i => {
-      if (!(source[i] !== 0 && source[i] !== owner && protectedNow[i])) next[i] = owner;
-    });
-    return next;
+    return claimTiles(tileIds, owner, source);
   }, []);
 
   const rivalMove = useCallback((sourceOwners: Owner[], sourcePlayed: { word: string; owner: 1 | 2 }[]) => {
@@ -231,21 +321,30 @@ export default function Home() {
       const protectedNow = protectedTiles(sourceOwners);
       const captures = ids.filter(i => sourceOwners[i] === 1 && !protectedNow[i]).length;
       const open = ids.filter(i => sourceOwners[i] === 0).length;
-      const score = word.length + captures * (difficulty === "fierce" ? 4 : 2) + open * .7 + Math.random() * 3;
-      return { word, ids, score };
+      const nextOwners = claimTiles(ids, 2, sourceOwners);
+      const score = difficulty === "fierce"
+        ? (boardAdvantage(nextOwners, 2) - boardAdvantage(sourceOwners, 2)) * 1.45 + captures * 7 + word.length * .55
+        : word.length + captures * 2 + open * .7 + Math.random() * 3;
+      return { word, ids, nextOwners, score };
     }).sort((a, b) => b.score - a.score);
-    const pool = difficulty === "relaxed" ? ranked.filter(x => x.word.length <= 5).slice(0, 18)
-      : difficulty === "clever" ? ranked.slice(0, 8) : ranked.slice(0, 2);
+    const strategic = difficulty === "fierce"
+      ? ranked.slice(0, 18).map(move => ({
+          ...move,
+          score: move.score - bestReplySwing(move.nextOwners, letters, new Set([...usedWords, move.word])) * .72,
+        })).sort((a, b) => b.score - a.score)
+      : ranked;
+    const pool = difficulty === "relaxed" ? strategic.filter(x => x.word.length <= 5).slice(0, 18)
+      : difficulty === "clever" ? strategic.slice(0, 8) : strategic.slice(0, 1);
     const move = pool[Math.floor(Math.random() * Math.max(pool.length, 1))] || ranked[0];
     if (!move) { setTurn("you"); setMessage("Your turn"); return; }
-    const nextOwners = applyClaim(move.ids, 2, sourceOwners);
+    const nextOwners = move.nextOwners;
     const nextPlayed = [...sourcePlayed, { word: move.word, owner: 2 as const }];
     setOwners(nextOwners);
     setPlayed(nextPlayed);
     const filled = nextOwners.every(Boolean);
     setTurn(filled ? "done" : "you");
     setMessage(filled ? (nextOwners.filter(o=>o===1).length > nextOwners.filter(o=>o===2).length ? "You locked the grid!" : "The grid is claimed") : `${LABELS[difficulty].name} played ${move.word.toUpperCase()}`);
-  }, [applyClaim, difficulty, letters]);
+  }, [difficulty, letters]);
 
   const submit = async () => {
     if (turn !== "you") return;
