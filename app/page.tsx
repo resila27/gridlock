@@ -48,6 +48,7 @@ yard year yellow yes yet you young your
 
 const BOT_WORDS = [...new Set([...WORDS, ...STRATEGY_WORDS])];
 const POWER_WORD_SET = new Set(STRATEGY_WORDS);
+const CLIENT_SUPPLEMENTAL_WORDS = new Set(["motherboard", "motherboards", "masturbated"]);
 
 const ORTHO = [[-1,-1],[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0],[1,1]];
 const CORNERS = [0, 4, 20, 24];
@@ -67,6 +68,32 @@ function todayKey() {
   }).formatToParts(new Date());
   const value = (type: Intl.DateTimeFormatPartTypes) => parts.find(part => part.type === type)?.value ?? "";
   return `${value("year")}-${value("month")}-${value("day")}`;
+}
+
+const DAILY_LAUNCH_DATE = "2026-08-02";
+
+function blocksPlayedWord(candidate: string, playedWords: Iterable<string>) {
+  return [...playedWords].some(previous => previous === candidate || previous.startsWith(candidate));
+}
+
+function monthKey(date: string) {
+  return date.slice(0, 7);
+}
+
+function shiftMonth(value: string, amount: number) {
+  const [year, month] = value.split("-").map(Number);
+  const next = new Date(year, month - 1 + amount, 1);
+  return `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function calendarDays(value: string) {
+  const [year, month] = value.split("-").map(Number);
+  const firstWeekday = new Date(year, month - 1, 1).getDay();
+  const count = new Date(year, month, 0).getDate();
+  return [
+    ...Array.from({ length: firstWeekday }, () => null),
+    ...Array.from({ length: count }, (_, index) => `${value}-${String(index + 1).padStart(2, "0")}`),
+  ];
 }
 
 function seededLetters(seed: string) {
@@ -246,7 +273,7 @@ export function chooseTiles(word: string, letters: string[], owners: Owner[], di
 function bestReplySwing(source: Owner[], letters: string[], usedWords: Set<string>) {
   const before = fiercePosition(source);
   const locked = protectedTiles(source);
-  const replies = BOT_WORDS.filter(word => word.length >= 3 && word.length <= 15 && !usedWords.has(word) && canForm(word, letters))
+  const replies = BOT_WORDS.filter(word => word.length >= 3 && word.length <= 15 && !blocksPlayedWord(word, usedWords) && canForm(word, letters))
     .map(word => {
       const ids = chooseTiles(word, letters, source, "clever");
       const captures = ids.filter(i => source[i] === 2 && !locked[i]).length;
@@ -262,8 +289,8 @@ function bestReplySwing(source: Owner[], letters: string[], usedWords: Set<strin
 
 export function selectRivalMove(sourceOwners: Owner[], sourcePlayed: PlayedWord[], letters: string[], difficulty: Difficulty, deterministic = false) {
   const usedWords = new Set(sourcePlayed.map(play => play.word));
-  const maxLength = difficulty === "fierce" ? 15 : difficulty === "clever" ? 12 : 6;
-  const candidates = BOT_WORDS.filter(word => word.length >= 3 && word.length <= maxLength && !usedWords.has(word) && canForm(word, letters));
+  const maxLength = difficulty === "fierce" ? 15 : difficulty === "clever" ? 8 : 6;
+  const candidates = BOT_WORDS.filter(word => word.length >= 3 && word.length <= maxLength && !blocksPlayedWord(word, usedWords) && (difficulty === "fierce" || !POWER_WORD_SET.has(word)) && canForm(word, letters));
   const scoreCandidate = (word: string, ids: number[]) => {
     const protectedNow = protectedTiles(sourceOwners);
     const captures = ids.filter(i => sourceOwners[i] === 1 && !protectedNow[i]).length;
@@ -276,7 +303,7 @@ export function selectRivalMove(sourceOwners: Owner[], sourcePlayed: PlayedWord[
     const score = difficulty === "fierce"
       ? strategicSwing * 1.65 + cornerSwing * 1.8 + captures * 9 + word.length * .8 + powerBonus
       : difficulty === "clever"
-        ? swing * .72 + captures * 4.8 + open * .6 + word.length * .75 + powerBonus * .5
+        ? swing * .5 + captures * 3.4 + open * .65 + word.length * .4
         : word.length + captures * 1.5 + open * .5 + Math.random() * 4;
     return { word, ids, nextOwners, score, captures };
   };
@@ -293,8 +320,8 @@ export function selectRivalMove(sourceOwners: Owner[], sourcePlayed: PlayedWord[
       })).sort((a, b) => b.score - a.score)
     : ranked;
   const pool = difficulty === "relaxed" ? strategic.filter(move => move.word.length <= 5).slice(0, 18)
-    : difficulty === "clever" ? strategic.slice(0, deterministic ? 1 : 3) : strategic.slice(0, 1);
-  return deterministic ? pool[0] ?? ranked[0] ?? null
+    : difficulty === "clever" ? strategic.slice(0, deterministic ? 7 : 10) : strategic.slice(0, 1);
+  return deterministic ? pool[Math.min(2, pool.length - 1)] ?? ranked[0] ?? null
     : pool[Math.floor(Math.random() * Math.max(pool.length, 1))] ?? ranked[0] ?? null;
 }
 
@@ -459,7 +486,7 @@ function newGameId() {
 }
 
 export default function Home() {
-  const [screen, setScreen] = useState<"home" | "game" | "rules">("home");
+  const [screen, setScreen] = useState<"home" | "game" | "rules" | "archive">("home");
   const [difficulty, setDifficulty] = useState<Difficulty>("clever");
   const [mode, setMode] = useState<GameMode>("classic");
   const [dailyDate, setDailyDate] = useState<string | null>(null);
@@ -485,6 +512,7 @@ export default function Home() {
   const [hapticsEnabled, setHapticsEnabled] = useState(() => typeof window === "undefined" || window.localStorage.getItem("gridlock-haptics") !== "off");
   const [tutorialOpen, setTutorialOpen] = useState(false);
   const [tutorialPage, setTutorialPage] = useState(0);
+  const [archiveMonth, setArchiveMonth] = useState(() => monthKey(todayKey()));
   const dragRef = useRef({ tileId: null as number | null, startX: 0, startY: 0, moved: false });
   const suppressClickRef = useRef(false);
 
@@ -501,6 +529,11 @@ export default function Home() {
   const result = yourScore > rivalScore ? "win" : yourScore < rivalScore ? "loss" : "tie";
   const dailyCompleted = typeof window !== "undefined" && window.localStorage.getItem(`gridlock-daily-${todayKey()}`) === "complete";
   const dailyPreviewLetters = useMemo(() => seededLetters(`GRIDLOCK-${todayKey()}`), []);
+  const archiveDates = useMemo(() => calendarDays(archiveMonth), [archiveMonth]);
+  const archiveMonthName = useMemo(() => {
+    const [year, month] = archiveMonth.split("-").map(Number);
+    return new Date(year, month - 1, 1).toLocaleDateString(undefined, { month: "long", year: "numeric" });
+  }, [archiveMonth]);
 
   const celebrateClaim = useCallback((wordTiles: number[], sourceOwners: Owner[], nextOwners: Owner[], owner: 1 | 2) => {
     const changed = wordTiles.filter(tile => sourceOwners[tile] !== nextOwners[tile]);
@@ -626,7 +659,7 @@ export default function Home() {
   };
 
   const newGame = (level = difficulty) => beginGame(level, "classic", null);
-  const startDaily = () => beginGame("clever", "daily", todayKey());
+  const startDaily = (date = todayKey()) => beginGame("clever", "daily", date);
 
   const applyClaim = useCallback((tileIds: number[], owner: 1 | 2, source: Owner[]) => {
     return claimTiles(tileIds, owner, source);
@@ -652,33 +685,33 @@ export default function Home() {
   const submit = async () => {
     if (turn !== "you") return;
     if (currentWord.length < 2) { setWordError("Choose at least 2 letters"); return; }
-    if (played.some(p => p.word === currentWord)) { setWordError("That word has already been played"); return; }
+    if (blocksPlayedWord(currentWord, played.map(play => play.word))) { setWordError("That word, or a longer form of it, has already been played"); return; }
     setValidating(true);
-    let valid = false;
-    try {
-      const response = await fetch("/api/index.php?action=validate-word", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ word: currentWord }),
-      });
-      const result = await response.json() as { valid?: boolean };
-      valid = response.ok && result.valid === true;
-    } catch {
-      if (window.location.hostname === "127.0.0.1" || window.location.hostname === "localhost") {
-        try {
-          const previewWords = await fetch("/api/data/words.json").then(response => response.json()) as string[];
-          valid = previewWords.includes(currentWord);
-        } catch {
+    let valid = CLIENT_SUPPLEMENTAL_WORDS.has(currentWord);
+    if (!valid) {
+      try {
+        const response = await fetch("/api/index.php?action=validate-word", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ word: currentWord }),
+        });
+        const result = await response.json() as { valid?: boolean };
+        valid = response.ok && result.valid === true;
+      } catch {
+        if (window.location.hostname === "127.0.0.1" || window.location.hostname === "localhost") {
           valid = BOT_WORDS.includes(currentWord);
+        } else {
+          setWordError("Couldn’t check that word. Try again.");
+          setValidating(false);
+          return;
         }
-      } else {
-        setWordError("Couldn’t check that word. Try again.");
-        return;
       }
-    } finally {
-      setValidating(false);
     }
-    if (!valid) { setWordError(`${currentWord.toUpperCase()} isn’t in the dictionary`); return; }
+    setValidating(false);
+    if (!valid) {
+      setWordError(currentWord === "masterbated" ? "Did you mean MASTURBATED?" : `${currentWord.toUpperCase()} isn’t in the dictionary`);
+      return;
+    }
     const beforeLocked = protectedTiles(owners);
     const captures = selected.filter(i => owners[i] === 2 && !beforeLocked[i]).length;
     const nextOwners = applyClaim(selected, 1, owners);
@@ -786,7 +819,7 @@ export default function Home() {
         <h1>GRIDLOCK</h1>
         <p className="lede">Find words. Claim the grid.<br/>Surround letters to make them yours for good.</p>
       </section>
-      <button aria-label={dailyCompleted ? "Replay today’s Daily Grid" : "Play today’s Daily Grid"} className="daily-feature" onClick={startDaily} type="button">
+      <button aria-label={dailyCompleted ? "Replay today’s Daily Grid" : "Play today’s Daily Grid"} className="daily-feature" onClick={() => startDaily()} type="button">
         <span className="daily-preview-grid" aria-hidden="true">
           {dailyPreviewLetters.map((letter, i) => <span className={i === 0 || i === 1 || i === 5 ? "preview-own" : i === 19 || i === 23 || i === 24 ? "preview-rival" : ""} key={i}>{letter}</span>)}
         </span>
@@ -797,6 +830,7 @@ export default function Home() {
           <i>→</i>
         </span>
       </button>
+      <button className="archive-link" onClick={() => { setArchiveMonth(monthKey(todayKey())); setScreen("archive"); }} type="button">Browse the Daily Grid archive <span>→</span></button>
       <section className="level-picker" aria-labelledby="choose-level">
         <p id="choose-level" className="picker-label">Keep playing · Choose your rival</p>
         {(Object.keys(LABELS) as Difficulty[]).map(level => (
@@ -811,6 +845,35 @@ export default function Home() {
       <button className="text-button haptics-toggle" aria-pressed={hapticsEnabled} onClick={toggleHaptics}>Vibration {hapticsEnabled ? "on" : "off"}</button>
     </main>{tutorialModal}{accountModal}</>
   );
+
+  if (screen === "archive") {
+    const currentMonth = monthKey(todayKey());
+    const firstMonth = monthKey(DAILY_LAUNCH_DATE);
+    return (
+      <><main className="archive-shell">
+        <header className="archive-header">
+          <button className="back" onClick={() => setScreen("home")} aria-label="Back to menu">←</button>
+          <div><p className="eyebrow">Daily Grid</p><h1>Archive</h1><p>Play any grid since launch day.</p></div>
+        </header>
+        <section className="archive-picker" aria-label="Daily Grid archive">
+          <div className="archive-month-nav">
+            <button disabled={archiveMonth <= firstMonth} onClick={() => setArchiveMonth(month => shiftMonth(month, -1))} aria-label="Previous month">‹</button>
+            <h2>{archiveMonthName}</h2>
+            <button disabled={archiveMonth >= currentMonth} onClick={() => setArchiveMonth(month => shiftMonth(month, 1))} aria-label="Next month">›</button>
+          </div>
+          <div className="archive-weekdays" aria-hidden="true">{["S","M","T","W","T","F","S"].map((day, index) => <span key={`${day}-${index}`}>{day}</span>)}</div>
+          <div className="archive-calendar">
+            {archiveDates.map((date, index) => {
+              if (!date) return <span className="archive-blank" key={`blank-${index}`} />;
+              const available = date >= DAILY_LAUNCH_DATE && date <= todayKey();
+              const complete = available && typeof window !== "undefined" && window.localStorage.getItem(`gridlock-daily-${date}`) === "complete";
+              return <button className={complete ? "completed" : ""} disabled={!available} onClick={() => startDaily(date)} key={date} type="button"><span>{Number(date.slice(-2))}</span>{complete && <b aria-label="Completed">★</b>}</button>;
+            })}
+          </div>
+        </section>
+      </main>{accountModal}</>
+    );
+  }
 
   if (screen === "rules") return (
     <><main className="rules-shell">
@@ -850,7 +913,7 @@ export default function Home() {
               <button className="clear-word" onClick={() => { setSelected([]); setWordError(""); }}>Clear</button>
               <button className="submit-word" disabled={validating || turn !== "you" || currentWord.length < 2} onClick={submit}>{validating ? "Checking…" : "Submit"}</button>
             </div>
-            <div className="assembled-word" aria-label={`Selected word: ${currentWord}`}>
+            <div className={`assembled-word ${selected.length >= 11 ? "very-long-word" : selected.length >= 8 ? "long-word" : ""}`} aria-label={`Selected word: ${currentWord}`}>
               {selected.map((i, position) => (
                 <button
                   key={i}
@@ -893,6 +956,10 @@ export default function Home() {
       </section>
 
       <footer className="game-controls">
+        {played.length > 0 && <details className="word-history">
+          <summary>Words played so far: <span>{played.length}</span></summary>
+          <ol>{played.map((play, index) => <li className={play.owner === 1 ? "mine" : "theirs"} key={`${play.word}-${index}`}><button type="button" onClick={() => void lookUpWord(play.word)}>{play.word.toUpperCase()}</button></li>)}</ol>
+        </details>}
         <div className="last-play">{played.length ? <button type="button" onClick={() => void lookUpWord(played.at(-1)?.word ?? "")}><span className={played.at(-1)?.owner === 1 ? "blue-dot" : "coral-dot"}></span>{played.at(-1)?.word.toUpperCase()} <i>define</i></button> : "First move is yours"}</div>
         {!account && <button className="save-progress-link" onClick={() => setAccountOpen(true)} type="button">Save this game across devices</button>}
         {turn === "done" && !resultsOpen && <button className="primary" onClick={() => setResultsOpen(true)}>See results</button>}
@@ -906,7 +973,7 @@ export default function Home() {
           <h2 id="results-title">{result === "win" ? "Grid conquered!" : result === "loss" ? "The rival held on." : "Deadlocked."}</h2>
           <div className="final-score"><strong>{yourScore}</strong><span>–</span><strong>{rivalScore}</strong></div>
           <div className="result-highlights">
-            <div><span>Best word</span><button type="button" onClick={() => longestWord && void lookUpWord(longestWord)}>{longestWord ? longestWord.toUpperCase() : "—"}</button></div>
+            <div><span>Best word</span><button title={longestWord.toUpperCase()} type="button" onClick={() => longestWord && void lookUpWord(longestWord)}>{longestWord ? longestWord.toUpperCase() : "—"}</button></div>
             <div><span>Biggest steal</span><strong>{biggestSteal}</strong></div>
             {mode === "daily" && <div><span>Daily standing</span><strong>{dailyStanding ? `#${dailyStanding.rank} of ${dailyStanding.total}` : account ? "Calculating…" : "Sign in"}</strong></div>}
           </div>
