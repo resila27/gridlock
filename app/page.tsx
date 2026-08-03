@@ -18,7 +18,12 @@ import {
   type SavedGame,
 } from "./api-client";
 
-const BASE_LETTERS = "STARECLOUDPINGMBEACHFORYT".split("");
+export const BOARD_ROWS = 5;
+export const BOARD_COLUMNS = 6;
+export const BOARD_SIZE = BOARD_ROWS * BOARD_COLUMNS;
+export const BOARD_VERSION = "5x6-v2";
+
+const BASE_LETTERS = "STARECLOUDPINGMBEACHFORYTENASR".split("");
 const WORDS = `
 ace ache act actor adore aer alert aloe alone alter amber ample angel angle angry ant ante any ape arch are area arm art ate atom aunt auto
 bad bag bar bare bat bath be beach beam bean bear beat bed bee been beer belt bent best bet bird bite boat bone bore born both bowl boy brain bread break bring broad broke brown build burn burst
@@ -53,7 +58,11 @@ const EXTENDED_WORD_SET = new Set(EXTENDED_WORDS);
 const CLIENT_SUPPLEMENTAL_WORDS = new Set(["motherboard", "motherboards", "masturbated"]);
 
 const ORTHO = [[-1,-1],[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0],[1,1]];
-const CORNERS = [0, 4, 20, 24];
+const CORNERS = [0, BOARD_COLUMNS - 1, BOARD_SIZE - BOARD_COLUMNS, BOARD_SIZE - 1];
+const CENTER_TILES = [
+  Math.floor(BOARD_ROWS / 2) * BOARD_COLUMNS + Math.floor((BOARD_COLUMNS - 1) / 2),
+  Math.floor(BOARD_ROWS / 2) * BOARD_COLUMNS + Math.ceil((BOARD_COLUMNS - 1) / 2),
+];
 
 function shuffledLetters() {
   const a = [...BASE_LETTERS];
@@ -127,11 +136,11 @@ function seededLetters(seed: string) {
   return letters;
 }
 
-function neighbors(index: number) {
-  const row = Math.floor(index / 5), col = index % 5;
+export function neighbors(index: number) {
+  const row = Math.floor(index / BOARD_COLUMNS), col = index % BOARD_COLUMNS;
   return ORTHO.map(([dr, dc]) => [row + dr, col + dc])
-    .filter(([r, c]) => r >= 0 && r < 5 && c >= 0 && c < 5)
-    .map(([r, c]) => r * 5 + c);
+    .filter(([r, c]) => r >= 0 && r < BOARD_ROWS && c >= 0 && c < BOARD_COLUMNS)
+    .map(([r, c]) => r * BOARD_COLUMNS + c);
 }
 
 function protectedTiles(owners: Owner[]) {
@@ -148,7 +157,12 @@ export function claimTiles(tileIds: number[], owner: 1 | 2, source: Owner[]) {
 }
 
 function manhattan(left: number, right: number) {
-  return Math.abs(Math.floor(left / 5) - Math.floor(right / 5)) + Math.abs(left % 5 - right % 5);
+  return Math.abs(Math.floor(left / BOARD_COLUMNS) - Math.floor(right / BOARD_COLUMNS))
+    + Math.abs(left % BOARD_COLUMNS - right % BOARD_COLUMNS);
+}
+
+function distanceToCenter(index: number) {
+  return Math.min(...CENTER_TILES.map(center => manhattan(index, center)));
 }
 
 function largestTerritory(owners: Owner[], owner: 1 | 2) {
@@ -175,9 +189,9 @@ function territoryValue(owners: Owner[], owner: 1 | 2) {
   const opponent = owner === 1 ? 2 : 1;
   const locked = protectedTiles(owners);
   const owned = owners.map((value, i) => value === owner ? i : -1).filter(i => i >= 0);
-  const phase = Math.min(1, owned.length / 11);
+  const phase = Math.min(1, owned.length / 13);
   const anchor = CORNERS.filter(i => owners[i] === owner)
-    .sort((a, b) => manhattan(a, 12) - manhattan(b, 12))[0];
+    .sort((a, b) => distanceToCenter(a) - distanceToCenter(b))[0];
   let score = owned.length * 2.6 + largestTerritory(owners, owner) * 2.8;
 
   owned.forEach(i => {
@@ -189,9 +203,9 @@ function territoryValue(owners: Owner[], owner: 1 | 2) {
     else if (friends === adjacent.length - 1) score += 8;
     else if (friends >= Math.ceil(adjacent.length * .6)) score += 3.5;
     if (CORNERS.includes(i)) score += 11 - phase * 5;
-    else if (Math.floor(i / 5) === 0 || Math.floor(i / 5) === 4 || i % 5 === 0 || i % 5 === 4) score += 2.2;
-    if (anchor !== undefined) score += Math.max(0, 5 - manhattan(anchor, i)) * (1.5 - phase * .6);
-    score += Math.max(0, 4 - manhattan(i, 12)) * phase * 1.8;
+    else if (Math.floor(i / BOARD_COLUMNS) === 0 || Math.floor(i / BOARD_COLUMNS) === BOARD_ROWS - 1 || i % BOARD_COLUMNS === 0 || i % BOARD_COLUMNS === BOARD_COLUMNS - 1) score += 2.2;
+    if (anchor !== undefined) score += Math.max(0, 6 - manhattan(anchor, i)) * (1.5 - phase * .6);
+    score += Math.max(0, 4 - distanceToCenter(i)) * phase * 1.8;
   });
 
   owners.forEach((value, i) => {
@@ -360,7 +374,7 @@ const TUTORIAL_SLIDES = [
   },
   {
     kind: "steal", eyebrow: "The score swings", title: "Their loss is your gain.",
-    body: "GRIDLOCK is a zero-sum fight for 25 tiles. Use a rival’s letter and it changes sides: you gain one while they lose one, making a steal twice as valuable as claiming empty space.",
+    body: "GRIDLOCK is a zero-sum fight for 30 letters. Use a rival’s letter and it changes sides: you gain one while they lose one, making a steal twice as valuable as claiming empty space.",
   },
   {
     kind: "corner", eyebrow: "Build a stronghold", title: "Start at an edge. Own a corner.",
@@ -375,8 +389,8 @@ const TUTORIAL_SLIDES = [
 const TUTORIAL_DEMOS = {
   claim: {
     word: "SCORE",
-    letters: "SCAMPORELTNDEIUBGHKYFJQVX".slice(0, 25).split(""),
-    selected: [0, 1, 5, 6, 7],
+    letters: "SCAMPORELTNDEIUBGHKYFJQVXWAZO".slice(0, BOARD_SIZE).split(""),
+    selected: [0, 1, 6, 7, 8],
     own: [],
     rival: [],
     changing: [],
@@ -385,7 +399,7 @@ const TUTORIAL_DEMOS = {
   },
   steal: {
     word: "STONEWALL",
-    letters: "STONEWALLRCIDPUBGHKYFJQVX".slice(0, 25).split(""),
+    letters: "STONEWALLRCIDPUBGHKYFJQVXMEAZ".slice(0, BOARD_SIZE).split(""),
     selected: [0, 1, 2, 3, 4, 5, 6, 7, 8],
     own: [],
     rival: [0, 3, 5, 7, 12, 14],
@@ -395,8 +409,8 @@ const TUTORIAL_DEMOS = {
   },
   corner: {
     word: "ROOTS",
-    letters: "ROAINOTSELCDMPUBGHKYFJQVX".slice(0, 25).split(""),
-    selected: [0, 1, 5, 6, 7],
+    letters: "ROAINOTSELCDMPUBGHKYFJQVXWAEZ".slice(0, BOARD_SIZE).split(""),
+    selected: [0, 1, 6, 7, 8],
     own: [],
     rival: [],
     changing: [],
@@ -405,8 +419,8 @@ const TUTORIAL_DEMOS = {
   },
   defend: {
     word: "SHIELD",
-    letters: "SHAREIELD OCTMPUBGKYFJQVXZ".replace(/\s/g, "").slice(0, 25).split(""),
-    selected: [0, 1, 5, 6, 7, 8],
+    letters: "SHAREIELD OCTMPUBGKYFJQVXZWANES".replace(/\s/g, "").slice(0, BOARD_SIZE).split(""),
+    selected: [0, 1, 6, 7, 8, 9],
     own: [],
     rival: [0, 1, 3, 4, 5, 6, 7, 8, 9, 13, 14, 19],
     changing: [0, 1, 5, 6, 7, 8],
@@ -509,7 +523,7 @@ export default function Home() {
   const [mode, setMode] = useState<GameMode>("classic");
   const [dailyDate, setDailyDate] = useState<string | null>(null);
   const [letters, setLetters] = useState(BASE_LETTERS);
-  const [owners, setOwners] = useState<Owner[]>(Array(25).fill(0));
+  const [owners, setOwners] = useState<Owner[]>(Array(BOARD_SIZE).fill(0));
   const [selected, setSelected] = useState<number[]>([]);
   const [played, setPlayed] = useState<PlayedWord[]>([]);
   const [turn, setTurn] = useState<"you" | "rival" | "done">("you");
@@ -575,6 +589,7 @@ export default function Home() {
   };
 
   const restoreGame = useCallback((game: SavedGame) => {
+    if (game.boardVersion !== BOARD_VERSION || game.letters.length !== BOARD_SIZE || game.owners.length !== BOARD_SIZE) return;
     setGameId(game.gameId);
     setDifficulty(game.difficulty);
     setMode(game.mode ?? "classic");
@@ -612,7 +627,7 @@ export default function Home() {
     if (!account || !accountReady || screen !== "game" || turn === "rival") return;
     const savedResult = turn === "done" ? result : null;
     const timer = window.setTimeout(() => {
-      void saveGame({ gameId, difficulty, letters, owners, played, turn, message, result: savedResult, mode, dailyDate })
+      void saveGame({ gameId, boardVersion: BOARD_VERSION, difficulty, letters, owners, played, turn, message, result: savedResult, mode, dailyDate })
         .then(response => {
           setAccountStats(response.stats);
           if (response.daily) setDailyStanding(response.daily);
@@ -663,7 +678,7 @@ export default function Home() {
     setMode(nextMode);
     setDailyDate(date);
     setLetters(nextMode === "daily" && date ? seededLetters(`GRIDLOCK-${date}`) : shuffledLetters());
-    setOwners(Array(25).fill(0));
+    setOwners(Array(BOARD_SIZE).fill(0));
     setSelected([]);
     setPlayed([]);
     setTurn("you");
@@ -781,10 +796,10 @@ export default function Home() {
   };
 
   const shareResult = async () => {
-    const grid = Array.from({ length: 5 }, (_, row) => owners.slice(row * 5, row * 5 + 5)
+    const grid = Array.from({ length: BOARD_ROWS }, (_, row) => owners.slice(row * BOARD_COLUMNS, row * BOARD_COLUMNS + BOARD_COLUMNS)
       .map(owner => owner === 1 ? "🟩" : owner === 2 ? "🟨" : "⬜").join("")).join("\n");
     const heading = mode === "daily" && dailyDate ? `GRIDLOCK Daily ${dailyDate}` : `GRIDLOCK vs ${LABELS[difficulty].name}`;
-    const text = `${heading}\n${yourScore}–${rivalScore} ${result === "win" ? "Win" : result === "loss" ? "Loss" : "Tie"}\n${grid}\n${longestWord ? `Best word: ${longestWord.toUpperCase()}\n` : ""}https://gridlockword.com`;
+    const text = `${heading}\n${yourScore}–${rivalScore} ${result === "win" ? "Win" : result === "loss" ? "Loss" : "Tie"}\n${grid}\n${longestWord ? `Best word: ${longestWord.toUpperCase()}\n` : ""}https://beta.gridlockword.com`;
     const canShare = typeof navigator.share === "function";
     try {
       if (canShare) await navigator.share({ text, title: "My GRIDLOCK result" });
@@ -834,12 +849,13 @@ export default function Home() {
           {["W","O","R","D","H","O","L","D","S"].map((l,i)=><span key={i}>{l}</span>)}
         </div>
         <p className="eyebrow">A battle of words</p>
+        <p className="beta-label">5×6 circle beta</p>
         <h1>GRIDLOCK</h1>
         <p className="lede">Find words. Claim the grid.<br/>Surround letters to make them yours for good.</p>
       </section>
       <button aria-label={dailyCompleted ? "Replay today’s Daily Grid" : "Play today’s Daily Grid"} className="daily-feature" onClick={() => startDaily()} type="button">
         <span className="daily-preview-grid" aria-hidden="true">
-          {dailyPreviewLetters.map((letter, i) => <span className={i === 0 || i === 1 || i === 5 ? "preview-own" : i === 19 || i === 23 || i === 24 ? "preview-rival" : ""} key={i}>{letter}</span>)}
+          {dailyPreviewLetters.map((letter, i) => <span className={i === 0 || i === 1 || i === 6 ? "preview-own" : i === 23 || i === 28 || i === 29 ? "preview-rival" : ""} key={i}>{letter}</span>)}
         </span>
         <span className="daily-feature-copy">
           <small>Today’s grid · {new Date().toLocaleDateString(undefined, { month: "short", day: "numeric" })}</small>
@@ -911,7 +927,7 @@ export default function Home() {
     <><main className="game-shell">
       <header className="game-topbar">
         <button className="icon-button" onClick={() => setScreen("home")} aria-label="Back to menu">←</button>
-        <div className="wordmark">{mode === "daily" ? "DAILY GRID" : "GRIDLOCK"}</div>
+        <div className="wordmark">{mode === "daily" ? "DAILY GRID · BETA" : "GRIDLOCK · BETA"}</div>
         <div className="topbar-actions">
           <button className="account-chip" onClick={() => setAccountOpen(true)} type="button">{account ? "Stats" : "Save"}</button>
           <button className="icon-button restart" onClick={() => newGame()} aria-label="New game">↻</button>

@@ -145,7 +145,7 @@ function latest_game(int $userId): ?array {
     $row = $statement->fetch();
     if (!$row) return null;
     $game = json_decode((string) $row['state_json'], true);
-    return is_array($game) ? $game : null;
+    return is_array($game) && ($game['boardVersion'] ?? '') === '5x6-v2' ? $game : null;
 }
 
 function word_set(): array {
@@ -182,7 +182,7 @@ function inflection_roots(string $word): array {
 }
 
 function valid_word(string $word): bool {
-    if (!preg_match('/^[a-z]{2,25}$/', $word)) return false;
+    if (!preg_match('/^[a-z]{2,30}$/', $word)) return false;
     $dictionary = word_set();
     if (isset($dictionary[$word])) return true;
     foreach (inflection_roots($word) as $root) if (isset($dictionary[$root])) return true;
@@ -191,6 +191,7 @@ function valid_word(string $word): bool {
 
 function validated_game(array $input): array {
     $gameId = (string) ($input['gameId'] ?? '');
+    $boardVersion = (string) ($input['boardVersion'] ?? '');
     $difficulty = (string) ($input['difficulty'] ?? '');
     $letters = $input['letters'] ?? null;
     $owners = $input['owners'] ?? null;
@@ -202,8 +203,9 @@ function validated_game(array $input): array {
     $dailyDate = $input['dailyDate'] ?? null;
 
     if (!preg_match('/^[A-Za-z0-9-]{8,64}$/', $gameId)) respond(['error' => 'Invalid game.'], 422);
+    if ($boardVersion !== '5x6-v2') respond(['error' => 'Invalid board version.'], 422);
     if (!in_array($difficulty, ['relaxed', 'clever', 'fierce'], true)) respond(['error' => 'Invalid game.'], 422);
-    if (!is_array($letters) || count($letters) !== 25 || !is_array($owners) || count($owners) !== 25) respond(['error' => 'Invalid game.'], 422);
+    if (!is_array($letters) || count($letters) !== 30 || !is_array($owners) || count($owners) !== 30) respond(['error' => 'Invalid game.'], 422);
     $cleanLetters = [];
     $cleanOwners = [];
     foreach ($letters as $letter) {
@@ -221,9 +223,9 @@ function validated_game(array $input): array {
         if (!is_array($play)) respond(['error' => 'Invalid game.'], 422);
         $word = strtolower((string) ($play['word'] ?? ''));
         $owner = $play['owner'] ?? null;
-        if (!preg_match('/^[a-z]{2,25}$/', $word) || !in_array($owner, [1, 2], true)) respond(['error' => 'Invalid game.'], 422);
+        if (!preg_match('/^[a-z]{2,30}$/', $word) || !in_array($owner, [1, 2], true)) respond(['error' => 'Invalid game.'], 422);
         $captures = (int) ($play['captures'] ?? 0);
-        if ($captures < 0 || $captures > 25) respond(['error' => 'Invalid game.'], 422);
+        if ($captures < 0 || $captures > 30) respond(['error' => 'Invalid game.'], 422);
         $cleanPlayed[] = ['word' => $word, 'owner' => $owner, 'captures' => $captures];
     }
     if (!in_array($turn, ['you', 'rival', 'done'], true) || strlen($message) > 120) respond(['error' => 'Invalid game.'], 422);
@@ -236,7 +238,7 @@ function validated_game(array $input): array {
     }
 
     return [
-        'gameId' => $gameId, 'difficulty' => $difficulty, 'letters' => $cleanLetters,
+        'gameId' => $gameId, 'boardVersion' => $boardVersion, 'difficulty' => $difficulty, 'letters' => $cleanLetters,
         'owners' => $cleanOwners, 'played' => $cleanPlayed, 'turn' => $turn,
         'message' => $message, 'result' => $result, 'mode' => $mode, 'dailyDate' => $dailyDate,
     ];
@@ -263,7 +265,7 @@ try {
 
     if ($action === 'define-word') {
         $word = strtolower(trim((string) (body()['word'] ?? '')));
-        if (!preg_match('/^[a-z]{2,25}$/', $word)) respond(['error' => 'Invalid word.'], 422);
+        if (!preg_match('/^[a-z]{2,30}$/', $word)) respond(['error' => 'Invalid word.'], 422);
         $context = stream_context_create(['http' => ['timeout' => 5, 'header' => "User-Agent: GRIDLOCK/1.0\r\n"]]);
         $definition = null;
         $source = null;
