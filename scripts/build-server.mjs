@@ -12,6 +12,7 @@ const strategyEncoded = [...strategySource.matchAll(/`([\s\S]*?)`\.trim\(\)\.spl
 if (!strategyEncoded) throw new Error("GRIDLOCK strategy dictionary could not be read.");
 const supplementalWords = [
   "motherboard", "motherboards",
+  "release",
   "salesman", "saleswoman", "salesperson",
 ];
 const words = [...new Set([...JSON.parse(encoded), ...strategyEncoded.trim().split(/\s+/), ...supplementalWords])].sort();
