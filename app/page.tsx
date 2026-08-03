@@ -370,31 +370,31 @@ const LABELS: Record<Difficulty, { name: string; note: string; face: string }> =
 const TUTORIAL_SLIDES = [
   {
     kind: "claim", eyebrow: "The basic move", title: "Make words. Take ground.",
-    body: "Choose letters anywhere on the grid, then submit your word. Every tile you use becomes yours, so useful words are also territory moves.",
+    body: "Choose circles anywhere on the 5×6 board, then submit your word. Every circle you use becomes yours, so useful words are also territory moves.",
   },
   {
     kind: "defend", eyebrow: "Think one turn ahead", title: "Protect yours. Break theirs.",
-    body: "A surrounded tile is locked while its support holds. Defend your clusters, attack the tiles supporting theirs, and remember: every move changes both players’ position.",
+    body: "A surrounded circle is locked while its support holds. Defend your clusters, break the circles supporting theirs, and remember: every move changes both players’ position.",
   },
   {
     kind: "steal", eyebrow: "The score swings", title: "Their loss is your gain.",
-    body: "GRIDLOCK is a zero-sum fight for 30 letters. Use a rival’s letter and it changes sides: you gain one while they lose one, making a steal twice as valuable as claiming empty space.",
+    body: "GRIDLOCK is a zero-sum fight for 30 circles. Use a rival’s letter and its circle changes sides: you gain one while they lose one, making a steal twice as valuable as claiming empty space.",
   },
   {
     kind: "corner", eyebrow: "Build a stronghold", title: "Start at an edge. Own a corner.",
-    body: "Corners have fewer neighboring tiles to secure. Capture one early, protect the tiles around it, then grow your connected territory toward the center.",
+    body: "Corners have fewer neighboring circles to secure. Capture one early, protect the circles around it, then grow your connected territory toward the center.",
   },
   {
     kind: "words", eyebrow: "Make language work harder", title: "Stretch the word.",
-    body: "Before submitting, look for a plural, prefix, or suffix. Then look again for compounds: RAIN can become RAINCOAT. Longer forms claim more tiles and open more chances to steal.",
+    body: "Before submitting, look for a prefix or suffix: LOCK can become UNLOCKED. Then look again for compounds: WORD and PLAY can become WORDPLAY. Longer forms claim more circles and create more chances to steal.",
   },
 ] as const;
 
-const TUTORIAL_DEMOS = {
+export const TUTORIAL_DEMOS = {
   claim: {
-    word: "SCORE",
-    letters: "SCAMPORELTNDEIUBGHKYFJQVXWAZON".slice(0, BOARD_SIZE).split(""),
-    selected: [0, 1, 6, 7, 8],
+    word: "CIRCLE",
+    letters: "CILRECRCEDPINGMBEACHFORYTENASR".split(""),
+    selected: [0, 1, 6, 7, 2, 8],
     own: [],
     rival: [],
     changing: [],
@@ -402,34 +402,34 @@ const TUTORIAL_DEMOS = {
     unlocking: [],
   },
   steal: {
-    word: "STONEWALL",
-    letters: "STONEWALLRCIDPUBGHKYFJQVXMEAZR".slice(0, BOARD_SIZE).split(""),
-    selected: [0, 1, 2, 3, 4, 5, 6, 7, 8],
+    word: "TAKEOVER",
+    letters: "TAKRECEOVDPIERMBEACHFORYTENASR".split(""),
+    selected: [0, 1, 2, 6, 7, 8, 12, 13],
     own: [],
-    rival: [0, 3, 5, 7, 12, 14],
-    changing: [0, 3, 5, 7],
-    locked: [0, 1, 2],
+    rival: [0, 2, 7, 12, 17, 22, 23, 29],
+    changing: [0, 2, 7, 12],
+    locked: [0, 1, 6],
     unlocking: [],
   },
   corner: {
-    word: "ROOTS",
-    letters: "ROAINOTSELCDMPUBGHKYFJQVXWAEZT".slice(0, BOARD_SIZE).split(""),
-    selected: [0, 1, 6, 7, 8],
+    word: "ANCHOR",
+    letters: "ANORECCHRDPINGMBEACHFORYTENASR".split(""),
+    selected: [0, 1, 6, 7, 2, 8],
     own: [],
     rival: [],
     changing: [],
-    locked: [0],
+    locked: [0, 1],
     unlocking: [],
   },
   defend: {
-    word: "SHIELD",
-    letters: "SHAREIELD OCTMPUBGKYFJQVXZWANES".replace(/\s/g, "").slice(0, BOARD_SIZE).split(""),
-    selected: [0, 1, 6, 7, 8, 9],
+    word: "UNLOCK",
+    letters: "UNARECLOKDCINGMBEACHFORYTENASR".split(""),
+    selected: [0, 1, 6, 7, 10, 8],
     own: [],
-    rival: [0, 1, 3, 4, 5, 6, 7, 8, 9, 13, 14, 19],
-    changing: [0, 1, 5, 6, 7, 8],
+    rival: [4, 5, 10, 11, 17, 22],
+    changing: [10],
     locked: [0],
-    unlocking: [4],
+    unlocking: [5],
   },
 } as const;
 
@@ -449,8 +449,8 @@ function TutorialDemo({ kind }: { kind: typeof TUTORIAL_SLIDES[number]["kind"] }
   if (kind === "words") return (
     <div className="word-power-demo" aria-hidden="true">
       <TutorialScore before={[4, 7]} after={[9, 5]} />
-      <div className="word-grow"><span>PLAY</span><span>PLAYED</span><strong>REPLAYED</strong></div>
-      <div className="compound-build"><span>RAIN</span><i>+</i><span>COAT</span><i>→</i><strong>RAINCOAT</strong></div>
+      <div className="word-grow"><span>LOCK</span><span>LOCKED</span><strong>UNLOCKED</strong></div>
+      <div className="compound-build"><span>WORD</span><i>+</i><span>PLAY</span><i>→</i><strong>WORDPLAY</strong></div>
     </div>
   );
   const demo = TUTORIAL_DEMOS[kind];
