@@ -349,17 +349,17 @@ const TUTORIAL_DEMOS = {
     own: [],
     rival: [0, 3, 5, 7, 12, 14],
     changing: [0, 3, 5, 7],
-    locked: [],
+    locked: [0, 1, 2],
     unlocking: [],
   },
   corner: {
     word: "ROOTS",
     letters: "ROAINOTSELCDMPUBGHKYFJQVX".slice(0, 25).split(""),
     selected: [0, 1, 5, 6, 7],
-    own: [2],
+    own: [],
     rival: [],
     changing: [],
-    locked: [0, 1],
+    locked: [0],
     unlocking: [],
   },
   defend: {
@@ -432,7 +432,13 @@ function TutorialModal({ page, onClose, onPage }: { page: number; onClose: () =>
         }}
       >
         <button className="tutorial-skip" onClick={onClose} type="button">Skip</button>
-        <TutorialDemo key={slide.kind} kind={slide.kind} />
+        <div className="tutorial-demo-frame">
+          {TUTORIAL_SLIDES.map((item, i) => (
+            <div className="tutorial-demo-slide" hidden={i !== page} key={item.kind}>
+              <TutorialDemo kind={item.kind} />
+            </div>
+          ))}
+        </div>
         <div className="tutorial-copy" key={slide.kind}>
           <p className="eyebrow">{slide.eyebrow}</p>
           <h2 id="tutorial-title">{slide.title}</h2>
