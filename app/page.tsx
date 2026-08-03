@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 
 type Difficulty = "relaxed" | "clever" | "fierce";
 type Owner = 0 | 1 | 2;
@@ -102,11 +102,49 @@ export default function Home() {
   const [message, setMessage] = useState("Make any word");
   const [wordError, setWordError] = useState("");
   const [validating, setValidating] = useState(false);
+  const [draggingTile, setDraggingTile] = useState<number | null>(null);
+  const dragRef = useRef({ tileId: null as number | null, startX: 0, startY: 0, moved: false });
+  const suppressClickRef = useRef(false);
 
   const locked = useMemo(() => protectedTiles(owners), [owners]);
   const currentWord = selected.map(i => letters[i]).join("").toLowerCase();
   const yourScore = owners.filter(o => o === 1).length;
   const rivalScore = owners.filter(o => o === 2).length;
+
+  const startWordDrag = (event: ReactPointerEvent<HTMLButtonElement>, tileId: number) => {
+    if (event.pointerType === "mouse" && event.button !== 0) return;
+    event.currentTarget.setPointerCapture(event.pointerId);
+    dragRef.current = { tileId, startX: event.clientX, startY: event.clientY, moved: false };
+    suppressClickRef.current = false;
+    setDraggingTile(tileId);
+  };
+
+  const moveWordDrag = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    const drag = dragRef.current;
+    if (drag.tileId === null) return;
+    if (Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY) > 5) drag.moved = true;
+    if (!drag.moved) return;
+    const target = document.elementFromPoint(event.clientX, event.clientY)?.closest<HTMLElement>("[data-word-position]");
+    const targetPosition = Number(target?.dataset.wordPosition);
+    if (!Number.isInteger(targetPosition)) return;
+    setSelected(current => {
+      const from = current.indexOf(drag.tileId as number);
+      if (from < 0 || from === targetPosition) return current;
+      const reordered = [...current];
+      const [tile] = reordered.splice(from, 1);
+      reordered.splice(targetPosition, 0, tile);
+      return reordered;
+    });
+    setWordError("");
+  };
+
+  const endWordDrag = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    if (dragRef.current.tileId === null) return;
+    suppressClickRef.current = dragRef.current.moved;
+    dragRef.current.tileId = null;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+    setDraggingTile(null);
+  };
 
   const newGame = (level = difficulty) => {
     setDifficulty(level);
@@ -187,7 +225,7 @@ export default function Home() {
     }
     setTurn("rival");
     setMessage(`${LABELS[difficulty].name} is thinking…`);
-    window.setTimeout(() => rivalMove(nextOwners, nextPlayed), 1500);
+    window.setTimeout(() => rivalMove(nextOwners, nextPlayed), 2500);
   };
 
   if (screen === "home") return (
@@ -250,12 +288,21 @@ export default function Home() {
               <button className="submit-word" disabled={validating || turn !== "you" || currentWord.length < 2} onClick={submit}>{validating ? "Checking…" : "Submit"}</button>
             </div>
             <div className="assembled-word" aria-label={`Selected word: ${currentWord}`}>
-              {selected.map(i => (
+              {selected.map((i, position) => (
                 <button
                   key={i}
-                  className={`word-letter owner-${owners[i]} ${locked[i] ? "locked" : ""}`}
-                  onClick={() => { setSelected(s => s.filter(x => x !== i)); setWordError(""); }}
-                  aria-label={`Remove ${letters[i]} from word`}
+                  data-word-position={position}
+                  className={`word-letter owner-${owners[i]} ${locked[i] ? "locked" : ""} ${draggingTile === i ? "dragging" : ""}`}
+                  onPointerDown={event => startWordDrag(event, i)}
+                  onPointerMove={moveWordDrag}
+                  onPointerUp={endWordDrag}
+                  onPointerCancel={endWordDrag}
+                  onClick={() => {
+                    if (suppressClickRef.current) { suppressClickRef.current = false; return; }
+                    setSelected(s => s.filter(x => x !== i));
+                    setWordError("");
+                  }}
+                  aria-label={`${letters[i]}, position ${position + 1}. Drag to reorder or click to remove.`}
                 >{letters[i]}</button>
               ))}
             </div>
