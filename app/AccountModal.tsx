@@ -66,6 +66,15 @@ export function AccountModal({ account, stats, onClose, onLogin, onLogout }: Pro
               <div><strong>{stats.completed}</strong><span>Games</span></div>
               <div><strong>{stats.wins}</strong><span>Wins</span></div>
               <div><strong>{winRate}%</strong><span>Win rate</span></div>
+              <div><strong>{stats.streak}</strong><span>Day streak</span></div>
+              <div><strong>{stats.longestWord ? stats.longestWord.toUpperCase() : "—"}</strong><span>Best word</span></div>
+              <div><strong>{stats.bestMargin > 0 ? `+${stats.bestMargin}` : stats.bestMargin}</strong><span>Best margin</span></div>
+            </div>
+            <div className="rival-records">
+              {(["relaxed", "clever", "fierce"] as const).map(level => {
+                const record = stats.byDifficulty[level];
+                return <div key={level}><span>{level}</span><strong>{record.wins}–{record.completed - record.wins}</strong></div>;
+              })}
             </div>
             {error && <p className="account-error" role="alert">{error}</p>}
             <button className="primary" disabled={busy} onClick={onClose} type="button">Keep playing</button>

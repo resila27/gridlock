@@ -6,10 +6,14 @@ import {
   getAccountStatus,
   logout,
   saveGame,
+  EMPTY_STATS,
   type AccountStats,
   type AccountUser,
+  type DailyStanding,
   type Difficulty,
+  type GameMode,
   type Owner,
+  type PlayedWord,
   type SavedGame,
 } from "./api-client";
 
@@ -51,6 +55,35 @@ function shuffledLetters() {
     [a[i], a[j]] = [a[j], a[i]];
   }
   return a;
+}
+
+function todayKey() {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    day: "2-digit", month: "2-digit", timeZone: "America/Los_Angeles", year: "numeric",
+  }).formatToParts(new Date());
+  const value = (type: Intl.DateTimeFormatPartTypes) => parts.find(part => part.type === type)?.value ?? "";
+  return `${value("year")}-${value("month")}-${value("day")}`;
+}
+
+function seededLetters(seed: string) {
+  let state = [...seed].reduce((hash, char) => Math.imul(hash ^ char.charCodeAt(0), 16777619), 2166136261) >>> 0;
+  const random = () => {
+    state += 0x6D2B79F5;
+    let value = state;
+    value = Math.imul(value ^ value >>> 15, value | 1);
+    value ^= value + Math.imul(value ^ value >>> 7, value | 61);
+    return ((value ^ value >>> 14) >>> 0) / 4294967296;
+  };
+  const letters = [...BASE_LETTERS];
+  for (let i = letters.length - 1; i > 0; i--) {
+    const j = Math.floor(random() * (i + 1));
+    [letters[i], letters[j]] = [letters[j], letters[i]];
+  }
+  return letters;
+}
+
+function changedTiles(before: Owner[], after: Owner[]) {
+  return after.map((owner, i) => owner !== before[i] ? i : -1).filter(i => i >= 0);
 }
 
 function neighbors(index: number) {
@@ -157,12 +190,18 @@ export function chooseTiles(word: string, letters: string[], owners: Owner[], di
           const capture = owners[i] === 1 && !locked[i] ? 12 : 0;
           return boardAdvantage(next, 2) + capture;
         }
+        if (difficulty === "clever") {
+          const next = claimTiles([...picks, i], 2, owners);
+          const capture = owners[i] === 1 && !locked[i] ? 7 : 0;
+          const friends = neighbors(i).filter(n => next[n] === 2).length;
+          return boardAdvantage(next, 2) * .4 + capture + friends * 2;
+        }
         if (owners[i] === 1 && !locked[i]) return 5;
         if (owners[i] === 0) return 3;
         if (owners[i] === 2) return 1;
         return -4;
       };
-      return value(b) - value(a) + (difficulty === "fierce" ? 0 : Math.random() - .5);
+      return value(b) - value(a) + (difficulty === "relaxed" ? Math.random() - .5 : 0);
     });
     const pick = candidates[0];
     used.add(pick);
@@ -190,7 +229,7 @@ function bestReplySwing(source: Owner[], letters: string[], usedWords: Set<strin
 
 const LABELS: Record<Difficulty, { name: string; note: string; face: string }> = {
   relaxed: { name: "Relaxed", note: "A gentle first match", face: "◡" },
-  clever: { name: "Clever", note: "Plans a few moves ahead", face: "•ᴗ•" },
+  clever: { name: "Clever", note: "Builds a smart position", face: "•ᴗ•" },
   fierce: { name: "Fierce", note: "Builds territory and looks ahead", face: "◉‿◉" },
 };
 
@@ -201,10 +240,12 @@ function newGameId() {
 export default function Home() {
   const [screen, setScreen] = useState<"home" | "game" | "rules">("home");
   const [difficulty, setDifficulty] = useState<Difficulty>("clever");
+  const [mode, setMode] = useState<GameMode>("classic");
+  const [dailyDate, setDailyDate] = useState<string | null>(null);
   const [letters, setLetters] = useState(BASE_LETTERS);
   const [owners, setOwners] = useState<Owner[]>(Array(25).fill(0));
   const [selected, setSelected] = useState<number[]>([]);
-  const [played, setPlayed] = useState<{ word: string; owner: 1 | 2 }[]>([]);
+  const [played, setPlayed] = useState<PlayedWord[]>([]);
   const [turn, setTurn] = useState<"you" | "rival" | "done">("you");
   const [message, setMessage] = useState("Make any word");
   const [wordError, setWordError] = useState("");
@@ -213,8 +254,14 @@ export default function Home() {
   const [gameId, setGameId] = useState<string>(newGameId);
   const [accountOpen, setAccountOpen] = useState(false);
   const [account, setAccount] = useState<AccountUser | null>(null);
-  const [accountStats, setAccountStats] = useState<AccountStats>({ completed: 0, wins: 0 });
+  const [accountStats, setAccountStats] = useState<AccountStats>(EMPTY_STATS);
   const [accountReady, setAccountReady] = useState(false);
+  const [dailyStanding, setDailyStanding] = useState<DailyStanding | null>(null);
+  const [resultsOpen, setResultsOpen] = useState(false);
+  const [shareStatus, setShareStatus] = useState("");
+  const [definition, setDefinition] = useState<{ word: string; text: string; loading: boolean } | null>(null);
+  const [recentlyClaimed, setRecentlyClaimed] = useState<number[]>([]);
+  const [tutorialStep, setTutorialStep] = useState(-1);
   const dragRef = useRef({ tileId: null as number | null, startX: 0, startY: 0, moved: false });
   const suppressClickRef = useRef(false);
 
@@ -222,10 +269,36 @@ export default function Home() {
   const currentWord = selected.map(i => letters[i]).join("").toLowerCase();
   const yourScore = owners.filter(o => o === 1).length;
   const rivalScore = owners.filter(o => o === 2).length;
+  const longestWord = played.reduce((best, play) => play.word.length > best.length ? play.word : best, "");
+  const biggestSteal = played.filter(play => play.owner === 1).reduce((best, play) => Math.max(best, play.captures ?? 0), 0);
+  const result = yourScore > rivalScore ? "win" : yourScore < rivalScore ? "loss" : "tie";
+  const dailyCompleted = typeof window !== "undefined" && window.localStorage.getItem(`gridlock-daily-${todayKey()}`) === "complete";
+
+  const celebrateClaim = useCallback((tileIds: number[], owner: 1 | 2) => {
+    setRecentlyClaimed(tileIds);
+    window.setTimeout(() => setRecentlyClaimed([]), 650);
+    if ("vibrate" in navigator) navigator.vibrate(owner === 1 ? 18 : 10);
+    try {
+      const AudioContextClass = window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+      if (!AudioContextClass) return;
+      const context = new AudioContextClass();
+      const oscillator = context.createOscillator();
+      const gain = context.createGain();
+      oscillator.frequency.value = owner === 1 ? 520 : 310;
+      gain.gain.setValueAtTime(.035, context.currentTime);
+      gain.gain.exponentialRampToValueAtTime(.001, context.currentTime + .12);
+      oscillator.connect(gain).connect(context.destination);
+      oscillator.start();
+      oscillator.stop(context.currentTime + .12);
+      window.setTimeout(() => void context.close(), 180);
+    } catch { /* Sound is an enhancement; gameplay never depends on it. */ }
+  }, []);
 
   const restoreGame = useCallback((game: SavedGame) => {
     setGameId(game.gameId);
     setDifficulty(game.difficulty);
+    setMode(game.mode ?? "classic");
+    setDailyDate(game.dailyDate ?? null);
     setLetters(game.letters);
     setOwners(game.owners);
     setPlayed(game.played);
@@ -233,6 +306,7 @@ export default function Home() {
     setMessage(game.message);
     setSelected([]);
     setWordError("");
+    setResultsOpen(game.turn === "done");
     setScreen("game");
   }, []);
 
@@ -252,14 +326,17 @@ export default function Home() {
 
   useEffect(() => {
     if (!account || !accountReady || screen !== "game" || turn === "rival") return;
-    const result = turn === "done" ? (yourScore > rivalScore ? "win" : yourScore < rivalScore ? "loss" : "tie") : null;
+    const savedResult = turn === "done" ? result : null;
     const timer = window.setTimeout(() => {
-      void saveGame({ gameId, difficulty, letters, owners, played, turn, message, result })
-        .then(response => setAccountStats(response.stats))
+      void saveGame({ gameId, difficulty, letters, owners, played, turn, message, result: savedResult, mode, dailyDate })
+        .then(response => {
+          setAccountStats(response.stats);
+          if (response.daily) setDailyStanding(response.daily);
+        })
         .catch(() => undefined);
     }, 250);
     return () => window.clearTimeout(timer);
-  }, [account, accountReady, difficulty, gameId, letters, message, owners, played, rivalScore, screen, turn, yourScore]);
+  }, [account, accountReady, dailyDate, difficulty, gameId, letters, message, mode, owners, played, result, screen, turn]);
 
   const startWordDrag = (event: ReactPointerEvent<HTMLButtonElement>, tileId: number) => {
     if (event.pointerType === "mouse" && event.button !== 0) return;
@@ -296,24 +373,35 @@ export default function Home() {
     setDraggingTile(null);
   };
 
-  const newGame = (level = difficulty) => {
-    setGameId(newGameId());
+  const beginGame = (level: Difficulty, nextMode: GameMode, date: string | null) => {
+    setGameId(nextMode === "daily" && date ? `daily-${date}` : newGameId());
     setDifficulty(level);
-    setLetters(shuffledLetters());
+    setMode(nextMode);
+    setDailyDate(date);
+    setLetters(nextMode === "daily" && date ? seededLetters(`GRIDLOCK-${date}`) : shuffledLetters());
     setOwners(Array(25).fill(0));
     setSelected([]);
     setPlayed([]);
     setTurn("you");
     setMessage("Make any word");
     setWordError("");
+    setDailyStanding(null);
+    setResultsOpen(false);
+    setShareStatus("");
+    setDefinition(null);
+    const tutorialDone = window.localStorage.getItem("gridlock-tutorial-complete") === "yes";
+    setTutorialStep(!tutorialDone && nextMode === "classic" && level === "relaxed" ? 0 : -1);
     setScreen("game");
   };
+
+  const newGame = (level = difficulty) => beginGame(level, "classic", null);
+  const startDaily = () => beginGame("clever", "daily", todayKey());
 
   const applyClaim = useCallback((tileIds: number[], owner: 1 | 2, source: Owner[]) => {
     return claimTiles(tileIds, owner, source);
   }, []);
 
-  const rivalMove = useCallback((sourceOwners: Owner[], sourcePlayed: { word: string; owner: 1 | 2 }[]) => {
+  const rivalMove = useCallback((sourceOwners: Owner[], sourcePlayed: PlayedWord[]) => {
     const usedWords = new Set(sourcePlayed.map(p => p.word));
     const candidates = WORDS.filter(w => w.length >= 3 && w.length <= 9 && !usedWords.has(w) && canForm(w, letters));
     const ranked = candidates.map(word => {
@@ -322,10 +410,13 @@ export default function Home() {
       const captures = ids.filter(i => sourceOwners[i] === 1 && !protectedNow[i]).length;
       const open = ids.filter(i => sourceOwners[i] === 0).length;
       const nextOwners = claimTiles(ids, 2, sourceOwners);
+      const swing = boardAdvantage(nextOwners, 2) - boardAdvantage(sourceOwners, 2);
       const score = difficulty === "fierce"
-        ? (boardAdvantage(nextOwners, 2) - boardAdvantage(sourceOwners, 2)) * 1.45 + captures * 7 + word.length * .55
-        : word.length + captures * 2 + open * .7 + Math.random() * 3;
-      return { word, ids, nextOwners, score };
+        ? swing * 1.45 + captures * 7 + word.length * .55
+        : difficulty === "clever"
+          ? swing * .62 + captures * 4.5 + open * .6 + word.length * .7
+          : word.length + captures * 1.5 + open * .5 + Math.random() * 4;
+      return { word, ids, nextOwners, score, captures };
     }).sort((a, b) => b.score - a.score);
     const strategic = difficulty === "fierce"
       ? ranked.slice(0, 18).map(move => ({
@@ -334,17 +425,24 @@ export default function Home() {
         })).sort((a, b) => b.score - a.score)
       : ranked;
     const pool = difficulty === "relaxed" ? strategic.filter(x => x.word.length <= 5).slice(0, 18)
-      : difficulty === "clever" ? strategic.slice(0, 8) : strategic.slice(0, 1);
-    const move = pool[Math.floor(Math.random() * Math.max(pool.length, 1))] || ranked[0];
+      : difficulty === "clever" ? strategic.slice(0, mode === "daily" ? 1 : 3) : strategic.slice(0, 1);
+    const move = mode === "daily" ? pool[0] : pool[Math.floor(Math.random() * Math.max(pool.length, 1))] || ranked[0];
     if (!move) { setTurn("you"); setMessage("Your turn"); return; }
     const nextOwners = move.nextOwners;
-    const nextPlayed = [...sourcePlayed, { word: move.word, owner: 2 as const }];
+    const nextPlayed = [...sourcePlayed, { word: move.word, owner: 2 as const, captures: move.captures }];
+    celebrateClaim(changedTiles(sourceOwners, nextOwners), 2);
     setOwners(nextOwners);
     setPlayed(nextPlayed);
     const filled = nextOwners.every(Boolean);
     setTurn(filled ? "done" : "you");
     setMessage(filled ? (nextOwners.filter(o=>o===1).length > nextOwners.filter(o=>o===2).length ? "You locked the grid!" : "The grid is claimed") : `${LABELS[difficulty].name} played ${move.word.toUpperCase()}`);
-  }, [difficulty, letters]);
+    if (tutorialStep === 0) setTutorialStep(1);
+    else if (tutorialStep === 1) setTutorialStep(2);
+    if (filled) {
+      if (mode === "daily" && dailyDate) window.localStorage.setItem(`gridlock-daily-${dailyDate}`, "complete");
+      window.setTimeout(() => setResultsOpen(true), 700);
+    }
+  }, [celebrateClaim, dailyDate, difficulty, letters, mode, tutorialStep]);
 
   const submit = async () => {
     if (turn !== "you") return;
@@ -367,8 +465,11 @@ export default function Home() {
       setValidating(false);
     }
     if (!valid) { setWordError(`${currentWord.toUpperCase()} isn’t in the dictionary`); return; }
+    const beforeLocked = protectedTiles(owners);
+    const captures = selected.filter(i => owners[i] === 2 && !beforeLocked[i]).length;
     const nextOwners = applyClaim(selected, 1, owners);
-    const nextPlayed = [...played, { word: currentWord, owner: 1 as const }];
+    const nextPlayed = [...played, { word: currentWord, owner: 1 as const, captures }];
+    celebrateClaim(changedTiles(owners, nextOwners), 1);
     setOwners(nextOwners);
     setPlayed(nextPlayed);
     setSelected([]);
@@ -376,7 +477,17 @@ export default function Home() {
     if (nextOwners.every(Boolean)) {
       setTurn("done");
       setMessage(nextOwners.filter(o=>o===1).length > nextOwners.filter(o=>o===2).length ? "You locked the grid!" : "The grid is claimed");
+      if (mode === "daily" && dailyDate) window.localStorage.setItem(`gridlock-daily-${dailyDate}`, "complete");
+      if (tutorialStep === 2) {
+        window.localStorage.setItem("gridlock-tutorial-complete", "yes");
+        setTutorialStep(-1);
+      }
+      window.setTimeout(() => setResultsOpen(true), 700);
       return;
+    }
+    if (tutorialStep === 2) {
+      window.localStorage.setItem("gridlock-tutorial-complete", "yes");
+      setTutorialStep(-1);
     }
     setTurn("rival");
     setMessage(`${LABELS[difficulty].name} is thinking…`);
@@ -394,8 +505,36 @@ export default function Home() {
   const signOut = async () => {
     await logout();
     setAccount(null);
-    setAccountStats({ completed: 0, wins: 0 });
+    setAccountStats(EMPTY_STATS);
     setAccountOpen(false);
+  };
+
+  const lookUpWord = async (word: string) => {
+    setDefinition({ word, text: "", loading: true });
+    try {
+      const response = await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(word)}`);
+      const entries = await response.json() as { meanings?: { definitions?: { definition?: string }[] }[] }[];
+      const text = entries?.[0]?.meanings?.flatMap(meaning => meaning.definitions ?? [])?.find(item => item.definition)?.definition;
+      setDefinition({ word, text: text || "No definition was found for this word.", loading: false });
+    } catch {
+      setDefinition({ word, text: "The definition is unavailable right now.", loading: false });
+    }
+  };
+
+  const shareResult = async () => {
+    const grid = Array.from({ length: 5 }, (_, row) => owners.slice(row * 5, row * 5 + 5)
+      .map(owner => owner === 1 ? "🟩" : owner === 2 ? "🟨" : "⬜").join("")).join("\n");
+    const heading = mode === "daily" && dailyDate ? `GRIDLOCK Daily ${dailyDate}` : `GRIDLOCK vs ${LABELS[difficulty].name}`;
+    const text = `${heading}\n${yourScore}–${rivalScore} ${result === "win" ? "Win" : result === "loss" ? "Loss" : "Tie"}\n${grid}\n${longestWord ? `Best word: ${longestWord.toUpperCase()}\n` : ""}https://gridlockword.com`;
+    const canShare = typeof navigator.share === "function";
+    try {
+      if (canShare) await navigator.share({ text, title: "My GRIDLOCK result" });
+      else await navigator.clipboard.writeText(text);
+      setShareStatus(canShare ? "Shared!" : "Copied!");
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") return;
+      setShareStatus("Couldn’t share");
+    }
   };
 
   const accountModal = accountOpen ? (
@@ -406,6 +545,18 @@ export default function Home() {
       onLogin={completeLogin}
       onLogout={signOut}
     />
+  ) : null;
+
+  const definitionModal = definition ? (
+    <div className="modal-backdrop" onMouseDown={() => setDefinition(null)}>
+      <section className="definition-modal" role="dialog" aria-modal="true" aria-labelledby="definition-title" onMouseDown={event => event.stopPropagation()}>
+        <button className="modal-close" onClick={() => setDefinition(null)} type="button" aria-label="Close">×</button>
+        <p className="eyebrow">Word played</p>
+        <h2 id="definition-title">{definition.word.toUpperCase()}</h2>
+        <p>{definition.loading ? "Looking it up…" : definition.text}</p>
+        <small>Definition provided by Free Dictionary API</small>
+      </section>
+    </div>
   ) : null;
 
   if (screen === "home") return (
@@ -419,6 +570,12 @@ export default function Home() {
         <h1>GRIDLOCK</h1>
         <p className="lede">Find words. Claim the grid.<br/>Surround letters to make them yours for good.</p>
       </section>
+      <button className="daily-card" onClick={startDaily} type="button">
+        <span className="daily-date">Today’s grid · {new Date().toLocaleDateString(undefined, { month: "short", day: "numeric" })}</span>
+        <strong>{dailyCompleted ? "Replay the Daily Grid" : "Play the Daily Grid"}</strong>
+        <small>Same board for everyone · Clever rival</small>
+        <span className="daily-arrow">→</span>
+      </button>
       <section className="level-picker" aria-labelledby="choose-level">
         <p id="choose-level" className="picker-label">Choose your rival</p>
         {(Object.keys(LABELS) as Difficulty[]).map(level => (
@@ -451,7 +608,7 @@ export default function Home() {
     <><main className="game-shell">
       <header className="game-topbar">
         <button className="icon-button" onClick={() => setScreen("home")} aria-label="Back to menu">←</button>
-        <div className="wordmark">GRIDLOCK</div>
+        <div className="wordmark">{mode === "daily" ? "DAILY GRID" : "GRIDLOCK"}</div>
         <div className="topbar-actions">
           <button className="account-chip" onClick={() => setAccountOpen(true)} type="button">{account ? "Stats" : "Save"}</button>
           <button className="icon-button restart" onClick={() => newGame()} aria-label="New game">↻</button>
@@ -463,6 +620,14 @@ export default function Home() {
         <div className="turn-status"><span className={turn}></span>{turn === "you" ? "your turn" : turn === "rival" ? "thinking" : "game over"}</div>
         <div className={`player rival ${difficulty}`}><span className="face">{LABELS[difficulty].face}</span><strong>{rivalScore}</strong><small>{LABELS[difficulty].name}</small></div>
       </section>
+
+      {tutorialStep >= 0 && (
+        <aside className="coach-tip" role="status">
+          <span>{tutorialStep + 1}</span>
+          <p>{tutorialStep === 0 ? "Tap letters in any order to build your first word." : tutorialStep === 1 ? "Use a gold letter in your word to steal it." : "Surround one of your green tiles to lock it permanently."}</p>
+          <button onClick={() => { window.localStorage.setItem("gridlock-tutorial-complete", "yes"); setTutorialStep(-1); }} type="button" aria-label="Dismiss tutorial">×</button>
+        </aside>
+      )}
 
       <section className="play-area">
         {currentWord ? (
@@ -504,7 +669,7 @@ export default function Home() {
               aria-label={`${letter}${owner === 1 ? ", yours" : owner === 2 ? ", rival’s" : ""}${locked[i] ? ", locked" : ""}`}
               aria-pressed={isSelected}
               disabled={turn !== "you"}
-              className={`tile owner-${owner} ${locked[i] ? "locked" : ""} ${isSelected ? "vacated" : ""}`}
+              className={`tile owner-${owner} ${locked[i] ? "locked" : ""} ${isSelected ? "vacated" : ""} ${recentlyClaimed.includes(i) ? "just-claimed" : ""}`}
               key={i}
               onClick={() => { setSelected(s => s.includes(i) ? s.filter(x => x !== i) : [...s, i]); setWordError(""); }}
             >{letter}{locked[i] && <i>◆</i>}</button>;
@@ -513,10 +678,30 @@ export default function Home() {
       </section>
 
       <footer className="game-controls">
-        <div className="last-play">{played.length ? <><span className={played.at(-1)?.owner === 1 ? "blue-dot" : "coral-dot"}></span>{played.at(-1)?.word.toUpperCase()}</> : "First move is yours"}</div>
+        <div className="last-play">{played.length ? <button type="button" onClick={() => void lookUpWord(played.at(-1)?.word ?? "")}><span className={played.at(-1)?.owner === 1 ? "blue-dot" : "coral-dot"}></span>{played.at(-1)?.word.toUpperCase()} <i>define</i></button> : "First move is yours"}</div>
         {!account && <button className="save-progress-link" onClick={() => setAccountOpen(true)} type="button">Save this game across devices</button>}
-        {turn === "done" && <button className="primary" onClick={() => newGame()}>Play again</button>}
+        {turn === "done" && !resultsOpen && <button className="primary" onClick={() => setResultsOpen(true)}>See results</button>}
       </footer>
-    </main>{accountModal}</>
+    </main>
+    {resultsOpen && turn === "done" && (
+      <div className="modal-backdrop results-backdrop">
+        <section className="results-modal" role="dialog" aria-modal="true" aria-labelledby="results-title">
+          <button className="modal-close" onClick={() => setResultsOpen(false)} type="button" aria-label="Close">×</button>
+          <p className="eyebrow">{mode === "daily" ? `Daily Grid · ${dailyDate}` : `Against ${LABELS[difficulty].name}`}</p>
+          <h2 id="results-title">{result === "win" ? "Grid conquered!" : result === "loss" ? "The rival held on." : "Deadlocked."}</h2>
+          <div className="final-score"><strong>{yourScore}</strong><span>–</span><strong>{rivalScore}</strong></div>
+          <div className="result-highlights">
+            <div><span>Best word</span><button type="button" onClick={() => longestWord && void lookUpWord(longestWord)}>{longestWord ? longestWord.toUpperCase() : "—"}</button></div>
+            <div><span>Biggest steal</span><strong>{biggestSteal}</strong></div>
+            {mode === "daily" && <div><span>Daily standing</span><strong>{dailyStanding ? `#${dailyStanding.rank} of ${dailyStanding.total}` : account ? "Calculating…" : "Sign in"}</strong></div>}
+          </div>
+          {dailyStanding && <p className="percentile">Top {dailyStanding.percentile}% today</p>}
+          <button className="primary share-result" onClick={() => void shareResult()} type="button">{shareStatus || "Share result"}</button>
+          <button className="secondary" onClick={() => mode === "daily" ? newGame(difficulty) : newGame()} type="button">Play another game</button>
+          {!account && <button className="account-guest" onClick={() => setAccountOpen(true)} type="button">Sign in to save this result</button>}
+        </section>
+      </div>
+    )}
+    {definitionModal}{accountModal}</>
   );
 }

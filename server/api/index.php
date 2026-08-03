@@ -58,14 +58,83 @@ function require_user(): array {
     return $user;
 }
 
+function empty_stats(): array {
+    return [
+        'completed' => 0, 'wins' => 0, 'losses' => 0, 'ties' => 0, 'streak' => 0,
+        'longestWord' => '', 'bestMargin' => 0,
+        'byDifficulty' => [
+            'relaxed' => ['completed' => 0, 'wins' => 0],
+            'clever' => ['completed' => 0, 'wins' => 0],
+            'fierce' => ['completed' => 0, 'wins' => 0],
+        ],
+    ];
+}
+
 function stats_for_user(int $userId): array {
     $statement = db()->prepare(
-        "SELECT COUNT(*) AS completed, SUM(CASE WHEN result = 'win' THEN 1 ELSE 0 END) AS wins "
-        . 'FROM games WHERE user_id = ? AND completed_at IS NOT NULL'
+        'SELECT difficulty, result, state_json FROM games WHERE user_id = ? AND completed_at IS NOT NULL ORDER BY completed_at DESC'
     );
     $statement->execute([$userId]);
-    $row = $statement->fetch() ?: [];
-    return ['completed' => (int) ($row['completed'] ?? 0), 'wins' => (int) ($row['wins'] ?? 0)];
+    $stats = empty_stats();
+    $dailyDates = [];
+    foreach ($statement->fetchAll() as $row) {
+        $stats['completed']++;
+        $result = (string) ($row['result'] ?? '');
+        if ($result === 'win') $stats['wins']++;
+        elseif ($result === 'loss') $stats['losses']++;
+        else $stats['ties']++;
+        $difficulty = (string) ($row['difficulty'] ?? '');
+        if (isset($stats['byDifficulty'][$difficulty])) {
+            $stats['byDifficulty'][$difficulty]['completed']++;
+            if ($result === 'win') $stats['byDifficulty'][$difficulty]['wins']++;
+        }
+        $game = json_decode((string) ($row['state_json'] ?? ''), true);
+        if (!is_array($game)) continue;
+        foreach (($game['played'] ?? []) as $play) {
+            $word = is_array($play) ? (string) ($play['word'] ?? '') : '';
+            if (is_array($play) && ($play['owner'] ?? null) === 1 && strlen($word) > strlen($stats['longestWord'])) $stats['longestWord'] = $word;
+        }
+        $owners = $game['owners'] ?? [];
+        if (is_array($owners)) {
+            $margin = count(array_filter($owners, static fn ($owner) => $owner === 1)) - count(array_filter($owners, static fn ($owner) => $owner === 2));
+            $stats['bestMargin'] = max($stats['bestMargin'], $margin);
+        }
+        if (($game['mode'] ?? '') === 'daily' && preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) ($game['dailyDate'] ?? ''))) {
+            $dailyDates[(string) $game['dailyDate']] = true;
+        }
+    }
+    $dates = array_keys($dailyDates);
+    rsort($dates);
+    if ($dates) {
+        $cursor = new DateTimeImmutable('today', new DateTimeZone('America/Los_Angeles'));
+        $latest = new DateTimeImmutable($dates[0], new DateTimeZone('America/Los_Angeles'));
+        if ($latest < $cursor) $cursor = $cursor->modify('-1 day');
+        foreach ($dates as $date) {
+            if ($date !== $cursor->format('Y-m-d')) break;
+            $stats['streak']++;
+            $cursor = $cursor->modify('-1 day');
+        }
+    }
+    return $stats;
+}
+
+function daily_standing(string $date, int $margin): ?array {
+    if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) return null;
+    $statement = db()->prepare('SELECT state_json FROM games WHERE completed_at IS NOT NULL');
+    $statement->execute();
+    $scores = [];
+    foreach ($statement->fetchAll() as $row) {
+        $game = json_decode((string) ($row['state_json'] ?? ''), true);
+        if (!is_array($game) || ($game['mode'] ?? '') !== 'daily' || ($game['dailyDate'] ?? '') !== $date) continue;
+        $owners = $game['owners'] ?? [];
+        if (!is_array($owners)) continue;
+        $scores[] = count(array_filter($owners, static fn ($owner) => $owner === 1)) - count(array_filter($owners, static fn ($owner) => $owner === 2));
+    }
+    if (!$scores) return null;
+    rsort($scores);
+    $rank = 1 + count(array_filter($scores, static fn ($score) => $score > $margin));
+    $total = count($scores);
+    return ['rank' => $rank, 'total' => $total, 'percentile' => max(1, (int) ceil(($rank / $total) * 100))];
 }
 
 function latest_game(int $userId): ?array {
@@ -129,6 +198,8 @@ function validated_game(array $input): array {
     $turn = (string) ($input['turn'] ?? '');
     $message = trim((string) ($input['message'] ?? ''));
     $result = $input['result'] ?? null;
+    $mode = (string) ($input['mode'] ?? 'classic');
+    $dailyDate = $input['dailyDate'] ?? null;
 
     if (!preg_match('/^[A-Za-z0-9-]{8,64}$/', $gameId)) respond(['error' => 'Invalid game.'], 422);
     if (!in_array($difficulty, ['relaxed', 'clever', 'fierce'], true)) respond(['error' => 'Invalid game.'], 422);
@@ -151,16 +222,23 @@ function validated_game(array $input): array {
         $word = strtolower((string) ($play['word'] ?? ''));
         $owner = $play['owner'] ?? null;
         if (!preg_match('/^[a-z]{2,25}$/', $word) || !in_array($owner, [1, 2], true)) respond(['error' => 'Invalid game.'], 422);
-        $cleanPlayed[] = ['word' => $word, 'owner' => $owner];
+        $captures = (int) ($play['captures'] ?? 0);
+        if ($captures < 0 || $captures > 25) respond(['error' => 'Invalid game.'], 422);
+        $cleanPlayed[] = ['word' => $word, 'owner' => $owner, 'captures' => $captures];
     }
     if (!in_array($turn, ['you', 'rival', 'done'], true) || strlen($message) > 120) respond(['error' => 'Invalid game.'], 422);
     if (!in_array($result, [null, 'win', 'loss', 'tie'], true)) respond(['error' => 'Invalid game.'], 422);
     if (($turn === 'done') !== ($result !== null)) respond(['error' => 'Invalid game.'], 422);
+    if (!in_array($mode, ['classic', 'daily'], true)) respond(['error' => 'Invalid game.'], 422);
+    if ($dailyDate !== null) $dailyDate = (string) $dailyDate;
+    if (($mode === 'daily' && !preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) $dailyDate)) || ($mode === 'classic' && $dailyDate !== null)) {
+        respond(['error' => 'Invalid game.'], 422);
+    }
 
     return [
         'gameId' => $gameId, 'difficulty' => $difficulty, 'letters' => $cleanLetters,
         'owners' => $cleanOwners, 'played' => $cleanPlayed, 'turn' => $turn,
-        'message' => $message, 'result' => $result,
+        'message' => $message, 'result' => $result, 'mode' => $mode, 'dailyDate' => $dailyDate,
     ];
 }
 
@@ -171,7 +249,7 @@ try {
         $user = current_user();
         respond([
             'game' => $user ? latest_game((int) $user['id']) : null,
-            'stats' => $user ? stats_for_user((int) $user['id']) : ['completed' => 0, 'wins' => 0],
+            'stats' => $user ? stats_for_user((int) $user['id']) : empty_stats(),
             'user' => $user ? ['email' => $user['email']] : null,
         ]);
     }
@@ -264,7 +342,8 @@ try {
         $existing->execute([$user['id'], $game['gameId']]);
         $row = $existing->fetch();
         if ($row && $row['completed_at']) {
-            respond(['game' => $game, 'stats' => stats_for_user((int) $user['id'])]);
+            $margin = count(array_filter($game['owners'], static fn ($owner) => $owner === 1)) - count(array_filter($game['owners'], static fn ($owner) => $owner === 2));
+            respond(['game' => $game, 'stats' => stats_for_user((int) $user['id']), 'daily' => $game['mode'] === 'daily' ? daily_standing((string) $game['dailyDate'], $margin) : null]);
         }
         $state = json_encode($game, JSON_UNESCAPED_SLASHES);
         if ($row) {
@@ -279,7 +358,8 @@ try {
             );
             $statement->execute([$user['id'], $game['gameId'], $game['difficulty'], $state, $completedAt, $game['result'], $now, $now]);
         }
-        respond(['game' => $game, 'stats' => stats_for_user((int) $user['id'])]);
+        $margin = count(array_filter($game['owners'], static fn ($owner) => $owner === 1)) - count(array_filter($game['owners'], static fn ($owner) => $owner === 2));
+        respond(['game' => $game, 'stats' => stats_for_user((int) $user['id']), 'daily' => $game['mode'] === 'daily' && $game['result'] !== null ? daily_standing((string) $game['dailyDate'], $margin) : null]);
     }
 
     respond(['error' => 'Not found.'], 404);

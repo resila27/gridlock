@@ -1,6 +1,7 @@
 export type Difficulty = "relaxed" | "clever" | "fierce";
 export type Owner = 0 | 1 | 2;
-export type PlayedWord = { word: string; owner: 1 | 2 };
+export type PlayedWord = { word: string; owner: 1 | 2; captures?: number };
+export type GameMode = "classic" | "daily";
 
 export type SavedGame = {
   gameId: string;
@@ -11,10 +12,37 @@ export type SavedGame = {
   turn: "you" | "rival" | "done";
   message: string;
   result: "win" | "loss" | "tie" | null;
+  mode?: GameMode;
+  dailyDate?: string | null;
 };
 
 export type AccountUser = { email: string };
-export type AccountStats = { completed: number; wins: number };
+export type AccountStats = {
+  completed: number;
+  wins: number;
+  losses: number;
+  ties: number;
+  streak: number;
+  longestWord: string;
+  bestMargin: number;
+  byDifficulty: Record<Difficulty, { completed: number; wins: number }>;
+};
+export type DailyStanding = { rank: number; total: number; percentile: number };
+
+export const EMPTY_STATS: AccountStats = {
+  completed: 0,
+  wins: 0,
+  losses: 0,
+  ties: 0,
+  streak: 0,
+  longestWord: "",
+  bestMargin: 0,
+  byDifficulty: {
+    relaxed: { completed: 0, wins: 0 },
+    clever: { completed: 0, wins: 0 },
+    fierce: { completed: 0, wins: 0 },
+  },
+};
 
 type ApiResponse<T> = T & { error?: string };
 
@@ -45,7 +73,7 @@ export function verifyLoginCode(email: string, code: string) {
 }
 
 export function saveGame(game: SavedGame) {
-  return request<{ game: SavedGame; stats: AccountStats }>("save-game", {
+  return request<{ daily: DailyStanding | null; game: SavedGame; stats: AccountStats }>("save-game", {
     body: JSON.stringify(game),
     method: "POST",
   });
