@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import { AccountModal } from "./AccountModal";
 import {
   getAccountStatus,
@@ -44,6 +44,16 @@ vast very vine visit voice vote
 wait wake walk wall want warm was wash watch water way wear week well west wet whale what wheel when where which white who wide wild wind wine wing winter wire wise wish with wolf wood word wore work world would write wrong
 yard year yellow yes yet you young your
 `.trim().split(/\s+/);
+
+// Familiar longer words make the stronger rivals both more capable and more human.
+const POWER_WORDS = `
+aircraft airplane airport backbone background backyard ballgame barefoot bathroom bedroom birthday blackbird blackout bookshelf brainstorm breakfast butterfly campground carpool catfish classroom coastline cookbook daylight dishwasher doorway downstairs driveway earphone earthquake evergreen everybody everyday everyone everything farmhouse fireplace firehouse football forecast forever friendship grandfather grandmother greenhouse haircut hallway handbook headlight heartbeat highway homework honeymoon horseplay horsepower houseboat household houseplant keyboard landmark lifetime lighthouse mailbox moonlight motorcycle newspaper nightclub nightmare nobody notebook outcome outdoors pancake playground playtime popcorn rainbow railroad raindrop rainfall raincoat rattlesnake roommate sailboat schoolhouse schoolmate seafood shipyard shoelace shortcut skateboard snowfall snowman someday somehow someone something soundtrack spaceship stairway starfish steamboat sunrise sunset sunshine tabletop teacup toothbrush toothpaste touchscreen townhouse underground upstairs waterfall weekend wheelchair wildfire wildlife windmill workbook workplace worldwide yourself
+disagree dislike download misread mistake outplayed outside overtake overtime overlook prepaid preview rebuild rebuilt replay replayed replaying remake remade restart restarted retell return rewrite rewritten unable unfair unhappy unlock unlocked unsafe update updated updates upload uploaded
+builders building buildings careful carefully colorful countless darkness fearless friendship friendships helpful hopeful hopeless kindness player players playful played playing replayable stronger strongest thoughtful thoughtless useful useless winner winners winning wonderful
+`.trim().split(/\s+/);
+
+const BOT_WORDS = [...new Set([...WORDS, ...POWER_WORDS])];
+const POWER_WORD_SET = new Set(POWER_WORDS);
 
 const ORTHO = [[-1,-1],[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0],[1,1]];
 const CORNERS = [0, 4, 20, 24];
@@ -167,6 +177,25 @@ export function boardAdvantage(owners: Owner[], owner: 1 | 2) {
   return territoryValue(owners, owner) - territoryValue(owners, owner === 1 ? 2 : 1);
 }
 
+function cornerPressure(owners: Owner[], owner: 1 | 2) {
+  const opponent = owner === 1 ? 2 : 1;
+  const locked = protectedTiles(owners);
+  return CORNERS.reduce((score, corner) => {
+    const adjacent = neighbors(corner);
+    const friends = adjacent.filter(i => owners[i] === owner).length;
+    const enemies = adjacent.filter(i => owners[i] === opponent).length;
+    if (owners[corner] === owner) return score + (locked[corner] ? 90 : 18 + friends * 24 - enemies * 10);
+    if (owners[corner] === opponent) return score - (locked[corner] ? 105 : 22 + enemies * 26 - friends * 12);
+    return score + friends * 9 - enemies * 11;
+  }, 0);
+}
+
+function fiercePosition(owners: Owner[]) {
+  const locked = protectedTiles(owners);
+  const lockBalance = owners.reduce<number>((score, owner, i) => score + (locked[i] ? owner === 2 ? 16 : owner === 1 ? -19 : 0 : 0), 0);
+  return boardAdvantage(owners, 2) + cornerPressure(owners, 2) * 1.35 + lockBalance;
+}
+
 function canForm(word: string, letters: string[]) {
   const available = [...letters];
   return [...word.toUpperCase()].every(letter => {
@@ -179,17 +208,31 @@ function canForm(word: string, letters: string[]) {
 
 export function chooseTiles(word: string, letters: string[], owners: Owner[], difficulty: Difficulty) {
   const locked = protectedTiles(owners);
+  if (difficulty === "fierce") {
+    let beams: { picks: number[]; used: Set<number>; score: number }[] = [{ picks: [], used: new Set(), score: fiercePosition(owners) }];
+    for (const letter of word.toUpperCase()) {
+      const expanded: typeof beams = [];
+      beams.forEach(beam => {
+        letters.forEach((candidate, i) => {
+          if (candidate !== letter || beam.used.has(i)) return;
+          const picks = [...beam.picks, i];
+          const used = new Set(beam.used);
+          used.add(i);
+          const next = claimTiles(picks, 2, owners);
+          const capture = owners[i] === 1 && !locked[i] ? 16 : 0;
+          expanded.push({ picks, used, score: fiercePosition(next) + capture });
+        });
+      });
+      beams = expanded.sort((a, b) => b.score - a.score).slice(0, 48);
+    }
+    return beams[0]?.picks ?? [];
+  }
   const used = new Set<number>();
   const picks: number[] = [];
   for (const letter of word.toUpperCase()) {
     const candidates = letters.map((l, i) => l === letter && !used.has(i) ? i : -1).filter(i => i >= 0);
     candidates.sort((a, b) => {
       const value = (i: number) => {
-        if (difficulty === "fierce") {
-          const next = claimTiles([...picks, i], 2, owners);
-          const capture = owners[i] === 1 && !locked[i] ? 12 : 0;
-          return boardAdvantage(next, 2) + capture;
-        }
         if (difficulty === "clever") {
           const next = claimTiles([...picks, i], 2, owners);
           const capture = owners[i] === 1 && !locked[i] ? 7 : 0;
@@ -211,27 +254,154 @@ export function chooseTiles(word: string, letters: string[], owners: Owner[], di
 }
 
 function bestReplySwing(source: Owner[], letters: string[], usedWords: Set<string>) {
-  const before = boardAdvantage(source, 2);
+  const before = fiercePosition(source);
   const locked = protectedTiles(source);
-  const replies = WORDS.filter(word => word.length >= 3 && word.length <= 9 && !usedWords.has(word) && canForm(word, letters))
+  const replies = BOT_WORDS.filter(word => word.length >= 3 && word.length <= 15 && !usedWords.has(word) && canForm(word, letters))
     .map(word => {
       const ids = chooseTiles(word, letters, source, "clever");
       const captures = ids.filter(i => source[i] === 2 && !locked[i]).length;
-      return { ids, priority: word.length + captures * 5 };
+      return { ids, priority: word.length * 1.15 + captures * 6 + (POWER_WORD_SET.has(word) ? 2 : 0) };
     })
     .sort((a, b) => b.priority - a.priority)
-    .slice(0, 36);
+    .slice(0, 50);
   return replies.reduce((worst, reply) => {
-    const after = boardAdvantage(claimTiles(reply.ids, 1, source), 2);
+    const after = fiercePosition(claimTiles(reply.ids, 1, source));
     return Math.max(worst, before - after);
   }, 0);
 }
 
+export function selectRivalMove(sourceOwners: Owner[], sourcePlayed: PlayedWord[], letters: string[], difficulty: Difficulty, deterministic = false) {
+  const usedWords = new Set(sourcePlayed.map(play => play.word));
+  const maxLength = difficulty === "fierce" ? 15 : difficulty === "clever" ? 12 : 6;
+  const candidates = BOT_WORDS.filter(word => word.length >= 3 && word.length <= maxLength && !usedWords.has(word) && canForm(word, letters));
+  const ranked = candidates.map(word => {
+    const ids = chooseTiles(word, letters, sourceOwners, difficulty);
+    const protectedNow = protectedTiles(sourceOwners);
+    const captures = ids.filter(i => sourceOwners[i] === 1 && !protectedNow[i]).length;
+    const open = ids.filter(i => sourceOwners[i] === 0).length;
+    const nextOwners = claimTiles(ids, 2, sourceOwners);
+    const swing = boardAdvantage(nextOwners, 2) - boardAdvantage(sourceOwners, 2);
+    const strategicSwing = fiercePosition(nextOwners) - fiercePosition(sourceOwners);
+    const cornerSwing = cornerPressure(nextOwners, 2) - cornerPressure(sourceOwners, 2);
+    const powerBonus = POWER_WORD_SET.has(word) ? Math.min(5, word.length * .35) : 0;
+    const score = difficulty === "fierce"
+      ? strategicSwing * 1.65 + cornerSwing * 1.8 + captures * 9 + word.length * .8 + powerBonus
+      : difficulty === "clever"
+        ? swing * .72 + captures * 4.8 + open * .6 + word.length * .75 + powerBonus * .5
+        : word.length + captures * 1.5 + open * .5 + Math.random() * 4;
+    return { word, ids, nextOwners, score, captures };
+  }).sort((a, b) => b.score - a.score);
+  const strategic = difficulty === "fierce"
+    ? ranked.slice(0, 28).map(move => ({
+        ...move,
+        score: move.score - bestReplySwing(move.nextOwners, letters, new Set([...usedWords, move.word])) * 1.08,
+      })).sort((a, b) => b.score - a.score)
+    : ranked;
+  const pool = difficulty === "relaxed" ? strategic.filter(move => move.word.length <= 5).slice(0, 18)
+    : difficulty === "clever" ? strategic.slice(0, deterministic ? 1 : 3) : strategic.slice(0, 1);
+  return deterministic ? pool[0] ?? ranked[0] ?? null
+    : pool[Math.floor(Math.random() * Math.max(pool.length, 1))] ?? ranked[0] ?? null;
+}
+
 const LABELS: Record<Difficulty, { name: string; note: string; face: string }> = {
   relaxed: { name: "Relaxed", note: "A gentle first match", face: "◡" },
-  clever: { name: "Clever", note: "Builds a smart position", face: "•ᴗ•" },
-  fierce: { name: "Fierce", note: "Builds territory and looks ahead", face: "◉‿◉" },
+  clever: { name: "Clever", note: "Things get more interesting", face: "•ᴗ•" },
+  fierce: { name: "Fierce", note: "Can you keep up?", face: "◉‿◉" },
 };
+
+const TUTORIAL_SLIDES = [
+  {
+    kind: "claim", eyebrow: "The basic move", title: "Make words. Take ground.",
+    body: "Choose letters anywhere on the grid, then submit your word. Every tile you use becomes yours, so useful words are also territory moves.",
+  },
+  {
+    kind: "steal", eyebrow: "The score swings", title: "Their loss is your gain.",
+    body: "GRIDLOCK is a zero-sum fight for 25 tiles. Use a rival’s letter and it changes sides: you gain one while they lose one, making a steal twice as valuable as claiming empty space.",
+  },
+  {
+    kind: "corner", eyebrow: "Build a stronghold", title: "Start at an edge. Own a corner.",
+    body: "Corners have fewer neighboring tiles to secure. Capture one early, protect the tiles around it, then grow your connected territory toward the center.",
+  },
+  {
+    kind: "words", eyebrow: "Make language work harder", title: "Stretch the word.",
+    body: "Before submitting, look for a plural, prefix, or suffix. Then look again for compounds: RAIN can become RAINCOAT. Longer forms claim more tiles and open more chances to steal.",
+  },
+  {
+    kind: "defend", eyebrow: "Think one turn ahead", title: "Protect yours. Break theirs.",
+    body: "A surrounded tile is locked while its support holds. Defend your clusters, attack the tiles supporting theirs, and remember: every move changes both players’ position.",
+  },
+] as const;
+
+const DEMO_LETTERS = "GRIDLOCKPLAYSMARTWORDTILES".slice(0, 25).split("");
+
+function TutorialDemo({ kind }: { kind: typeof TUTORIAL_SLIDES[number]["kind"] }) {
+  if (kind === "words") return (
+    <div className="word-power-demo" aria-hidden="true">
+      <div className="word-grow"><span>PLAY</span><span>PLAYED</span><strong>REPLAYED</strong></div>
+      <div className="compound-build"><span>RAIN</span><i>+</i><span>COAT</span><i>→</i><strong>RAINCOAT</strong></div>
+    </div>
+  );
+  const own = kind === "claim" ? [12, 6, 18, 1, 24]
+    : kind === "steal" ? [18, 20, 21]
+      : kind === "corner" ? [0, 1, 5, 6]
+        : [0, 1, 5, 6, 7, 11, 12];
+  const rival = kind === "steal" ? [0, 1, 5, 6, 10, 11]
+    : kind === "defend" ? [3, 4, 8, 9, 13, 14, 19] : [];
+  const changing = kind === "steal" ? [1, 6, 11] : kind === "defend" ? [8, 13] : [];
+  return (
+    <div className={`tutorial-demo demo-${kind}`} aria-hidden="true">
+      {kind === "claim" && <div className="demo-word"><b>SCORE</b><span>claims 5</span></div>}
+      {kind === "steal" && <div className="swing-score"><b>YOU +1</b><span>RIVAL −1</span></div>}
+      <div className="tutorial-board">
+        {DEMO_LETTERS.map((letter, i) => <span
+          className={`${own.includes(i) ? "demo-own" : ""} ${rival.includes(i) ? "demo-rival" : ""} ${changing.includes(i) ? "demo-changing" : ""} ${kind === "corner" && i === 0 ? "demo-locked" : ""}`}
+          key={i}
+          style={{ "--tile-delay": `${(i % 5) * .13}s` } as CSSProperties}
+        >{letter}{kind === "corner" && i === 0 && <i>◆</i>}</span>)}
+      </div>
+    </div>
+  );
+}
+
+function TutorialModal({ page, onClose, onPage }: { page: number; onClose: () => void; onPage: (page: number) => void }) {
+  const swipeStart = useRef<number | null>(null);
+  const slide = TUTORIAL_SLIDES[page];
+  const changePage = (next: number) => onPage(Math.max(0, Math.min(TUTORIAL_SLIDES.length - 1, next)));
+  return (
+    <div className="tutorial-backdrop">
+      <section
+        className="tutorial-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="tutorial-title"
+        onPointerDown={event => { swipeStart.current = event.clientX; }}
+        onPointerUp={event => {
+          if (swipeStart.current === null) return;
+          const distance = event.clientX - swipeStart.current;
+          swipeStart.current = null;
+          if (Math.abs(distance) > 45) changePage(page + (distance < 0 ? 1 : -1));
+        }}
+      >
+        <button className="tutorial-skip" onClick={onClose} type="button">Skip</button>
+        <TutorialDemo kind={slide.kind} />
+        <div className="tutorial-copy" key={slide.kind}>
+          <p className="eyebrow">{slide.eyebrow}</p>
+          <h2 id="tutorial-title">{slide.title}</h2>
+          <p>{slide.body}</p>
+        </div>
+        <div className="tutorial-dots" aria-label={`Tutorial page ${page + 1} of ${TUTORIAL_SLIDES.length}`}>
+          {TUTORIAL_SLIDES.map((item, i) => <button className={i === page ? "active" : ""} key={item.kind} onClick={() => onPage(i)} type="button" aria-label={`Go to tutorial page ${i + 1}`} />)}
+        </div>
+        <div className="tutorial-nav">
+          <button className="tutorial-back" disabled={page === 0} onClick={() => changePage(page - 1)} type="button">Back</button>
+          {page < TUTORIAL_SLIDES.length - 1
+            ? <button className="primary" onClick={() => changePage(page + 1)} type="button">Next</button>
+            : <button className="primary" onClick={onClose} type="button">Let’s play</button>}
+        </div>
+      </section>
+    </div>
+  );
+}
 
 function newGameId() {
   return globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -261,7 +431,8 @@ export default function Home() {
   const [shareStatus, setShareStatus] = useState("");
   const [definition, setDefinition] = useState<{ word: string; text: string; loading: boolean } | null>(null);
   const [recentlyClaimed, setRecentlyClaimed] = useState<number[]>([]);
-  const [tutorialStep, setTutorialStep] = useState(-1);
+  const [tutorialOpen, setTutorialOpen] = useState(false);
+  const [tutorialPage, setTutorialPage] = useState(0);
   const dragRef = useRef({ tileId: null as number | null, startX: 0, startY: 0, moved: false });
   const suppressClickRef = useRef(false);
 
@@ -273,6 +444,7 @@ export default function Home() {
   const biggestSteal = played.filter(play => play.owner === 1).reduce((best, play) => Math.max(best, play.captures ?? 0), 0);
   const result = yourScore > rivalScore ? "win" : yourScore < rivalScore ? "loss" : "tie";
   const dailyCompleted = typeof window !== "undefined" && window.localStorage.getItem(`gridlock-daily-${todayKey()}`) === "complete";
+  const dailyPreviewLetters = useMemo(() => seededLetters(`GRIDLOCK-${todayKey()}`), []);
 
   const celebrateClaim = useCallback((tileIds: number[], owner: 1 | 2) => {
     setRecentlyClaimed(tileIds);
@@ -308,6 +480,10 @@ export default function Home() {
     setWordError("");
     setResultsOpen(game.turn === "done");
     setScreen("game");
+  }, []);
+
+  useEffect(() => {
+    if (window.localStorage.getItem("gridlock-tutorial-v2") !== "seen") setTutorialOpen(true);
   }, []);
 
   useEffect(() => {
@@ -389,8 +565,6 @@ export default function Home() {
     setResultsOpen(false);
     setShareStatus("");
     setDefinition(null);
-    const tutorialDone = window.localStorage.getItem("gridlock-tutorial-complete") === "yes";
-    setTutorialStep(!tutorialDone && nextMode === "classic" && level === "relaxed" ? 0 : -1);
     setScreen("game");
   };
 
@@ -402,31 +576,7 @@ export default function Home() {
   }, []);
 
   const rivalMove = useCallback((sourceOwners: Owner[], sourcePlayed: PlayedWord[]) => {
-    const usedWords = new Set(sourcePlayed.map(p => p.word));
-    const candidates = WORDS.filter(w => w.length >= 3 && w.length <= 9 && !usedWords.has(w) && canForm(w, letters));
-    const ranked = candidates.map(word => {
-      const ids = chooseTiles(word, letters, sourceOwners, difficulty);
-      const protectedNow = protectedTiles(sourceOwners);
-      const captures = ids.filter(i => sourceOwners[i] === 1 && !protectedNow[i]).length;
-      const open = ids.filter(i => sourceOwners[i] === 0).length;
-      const nextOwners = claimTiles(ids, 2, sourceOwners);
-      const swing = boardAdvantage(nextOwners, 2) - boardAdvantage(sourceOwners, 2);
-      const score = difficulty === "fierce"
-        ? swing * 1.45 + captures * 7 + word.length * .55
-        : difficulty === "clever"
-          ? swing * .62 + captures * 4.5 + open * .6 + word.length * .7
-          : word.length + captures * 1.5 + open * .5 + Math.random() * 4;
-      return { word, ids, nextOwners, score, captures };
-    }).sort((a, b) => b.score - a.score);
-    const strategic = difficulty === "fierce"
-      ? ranked.slice(0, 18).map(move => ({
-          ...move,
-          score: move.score - bestReplySwing(move.nextOwners, letters, new Set([...usedWords, move.word])) * .72,
-        })).sort((a, b) => b.score - a.score)
-      : ranked;
-    const pool = difficulty === "relaxed" ? strategic.filter(x => x.word.length <= 5).slice(0, 18)
-      : difficulty === "clever" ? strategic.slice(0, mode === "daily" ? 1 : 3) : strategic.slice(0, 1);
-    const move = mode === "daily" ? pool[0] : pool[Math.floor(Math.random() * Math.max(pool.length, 1))] || ranked[0];
+    const move = selectRivalMove(sourceOwners, sourcePlayed, letters, difficulty, mode === "daily");
     if (!move) { setTurn("you"); setMessage("Your turn"); return; }
     const nextOwners = move.nextOwners;
     const nextPlayed = [...sourcePlayed, { word: move.word, owner: 2 as const, captures: move.captures }];
@@ -436,13 +586,11 @@ export default function Home() {
     const filled = nextOwners.every(Boolean);
     setTurn(filled ? "done" : "you");
     setMessage(filled ? (nextOwners.filter(o=>o===1).length > nextOwners.filter(o=>o===2).length ? "You locked the grid!" : "The grid is claimed") : `${LABELS[difficulty].name} played ${move.word.toUpperCase()}`);
-    if (tutorialStep === 0) setTutorialStep(1);
-    else if (tutorialStep === 1) setTutorialStep(2);
     if (filled) {
       if (mode === "daily" && dailyDate) window.localStorage.setItem(`gridlock-daily-${dailyDate}`, "complete");
       window.setTimeout(() => setResultsOpen(true), 700);
     }
-  }, [celebrateClaim, dailyDate, difficulty, letters, mode, tutorialStep]);
+  }, [celebrateClaim, dailyDate, difficulty, letters, mode]);
 
   const submit = async () => {
     if (turn !== "you") return;
@@ -478,16 +626,8 @@ export default function Home() {
       setTurn("done");
       setMessage(nextOwners.filter(o=>o===1).length > nextOwners.filter(o=>o===2).length ? "You locked the grid!" : "The grid is claimed");
       if (mode === "daily" && dailyDate) window.localStorage.setItem(`gridlock-daily-${dailyDate}`, "complete");
-      if (tutorialStep === 2) {
-        window.localStorage.setItem("gridlock-tutorial-complete", "yes");
-        setTutorialStep(-1);
-      }
       window.setTimeout(() => setResultsOpen(true), 700);
       return;
-    }
-    if (tutorialStep === 2) {
-      window.localStorage.setItem("gridlock-tutorial-complete", "yes");
-      setTutorialStep(-1);
     }
     setTurn("rival");
     setMessage(`${LABELS[difficulty].name} is thinking…`);
@@ -538,6 +678,12 @@ export default function Home() {
     }
   };
 
+  const closeTutorial = () => {
+    window.localStorage.setItem("gridlock-tutorial-v2", "seen");
+    setTutorialOpen(false);
+    setTutorialPage(0);
+  };
+
   const accountModal = accountOpen ? (
     <AccountModal
       account={account}
@@ -560,6 +706,8 @@ export default function Home() {
     </div>
   ) : null;
 
+  const tutorialModal = tutorialOpen ? <TutorialModal page={tutorialPage} onClose={closeTutorial} onPage={setTutorialPage} /> : null;
+
   if (screen === "home") return (
     <><main className="home-shell">
       <button className="account-chip home-account" onClick={() => setAccountOpen(true)} type="button">{account ? "My progress" : "Save progress"}</button>
@@ -571,14 +719,19 @@ export default function Home() {
         <h1>GRIDLOCK</h1>
         <p className="lede">Find words. Claim the grid.<br/>Surround letters to make them yours for good.</p>
       </section>
-      <button className="daily-card" onClick={startDaily} type="button">
-        <span className="daily-date">Today’s grid · {new Date().toLocaleDateString(undefined, { month: "short", day: "numeric" })}</span>
-        <strong>{dailyCompleted ? "Replay the Daily Grid" : "Play the Daily Grid"}</strong>
-        <small>Same board for everyone · Clever rival</small>
-        <span className="daily-arrow">→</span>
+      <button aria-label={dailyCompleted ? "Replay today’s Daily Grid" : "Play today’s Daily Grid"} className="daily-feature" onClick={startDaily} type="button">
+        <span className="daily-preview-grid" aria-hidden="true">
+          {dailyPreviewLetters.map((letter, i) => <span className={i === 0 || i === 1 || i === 5 ? "preview-own" : i === 19 || i === 23 || i === 24 ? "preview-rival" : ""} key={i}>{letter}</span>)}
+        </span>
+        <span className="daily-feature-copy">
+          <small>Today’s grid · {new Date().toLocaleDateString(undefined, { month: "short", day: "numeric" })}</small>
+          <strong>{dailyCompleted ? "Replay today’s grid" : "Play today’s grid"}</strong>
+          <b>Same board for everyone</b>
+          <i>→</i>
+        </span>
       </button>
       <section className="level-picker" aria-labelledby="choose-level">
-        <p id="choose-level" className="picker-label">Choose your rival</p>
+        <p id="choose-level" className="picker-label">Keep playing · Choose your rival</p>
         {(Object.keys(LABELS) as Difficulty[]).map(level => (
           <button className={`level ${level}`} key={level} onClick={() => newGame(level)}>
             <span className="rival-face">{LABELS[level].face}</span>
@@ -587,8 +740,8 @@ export default function Home() {
           </button>
         ))}
       </section>
-      <button className="text-button" onClick={() => setScreen("rules")}>How to play</button>
-    </main>{accountModal}</>
+      <button className="text-button" onClick={() => { setTutorialPage(0); setTutorialOpen(true); }}>How to play & strategy</button>
+    </main>{tutorialModal}{accountModal}</>
   );
 
   if (screen === "rules") return (
@@ -602,7 +755,7 @@ export default function Home() {
         <article><span>3</span><div><h3>Build a stronghold</h3><p>Surround a letter with your color to lock it. Locked letters can’t be stolen.</p></div></article>
       </div>
       <button className="primary" onClick={() => newGame("relaxed")}>Play a relaxed game</button>
-    </main>{accountModal}</>
+    </main>{tutorialModal}{accountModal}</>
   );
 
   return (
@@ -621,14 +774,6 @@ export default function Home() {
         <div className="turn-status"><span className={turn}></span>{turn === "you" ? "your turn" : turn === "rival" ? "thinking" : "game over"}</div>
         <div className={`player rival ${difficulty}`}><span className="face">{LABELS[difficulty].face}</span><strong>{rivalScore}</strong><small>{LABELS[difficulty].name}</small></div>
       </section>
-
-      {tutorialStep >= 0 && (
-        <aside className="coach-tip" role="status">
-          <span>{tutorialStep + 1}</span>
-          <p>{tutorialStep === 0 ? "Tap letters in any order to build your first word." : tutorialStep === 1 ? "Use a gold letter in your word to steal it." : "Surround one of your green tiles to lock it permanently."}</p>
-          <button onClick={() => { window.localStorage.setItem("gridlock-tutorial-complete", "yes"); setTutorialStep(-1); }} type="button" aria-label="Dismiss tutorial">×</button>
-        </aside>
-      )}
 
       <section className="play-area">
         {currentWord ? (
@@ -703,6 +848,6 @@ export default function Home() {
         </section>
       </div>
     )}
-    {definitionModal}{accountModal}</>
+    {definitionModal}{tutorialModal}{accountModal}</>
   );
 }
