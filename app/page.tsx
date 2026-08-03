@@ -331,7 +331,46 @@ const TUTORIAL_SLIDES = [
   },
 ] as const;
 
-const DEMO_LETTERS = "GRIDLOCKPLAYSMARTWORDTILES".slice(0, 25).split("");
+const TUTORIAL_DEMOS = {
+  claim: {
+    word: "SCORE",
+    letters: "SCAMPORELTNDEIUBGHKYFJQVX".slice(0, 25).split(""),
+    selected: [0, 1, 5, 6, 7],
+    own: [],
+    rival: [],
+    changing: [],
+    locked: [],
+  },
+  steal: {
+    word: "STONE",
+    letters: "STAIRLONEDCMPUGBHKYFJQVXZ".slice(0, 25).split(""),
+    selected: [0, 1, 6, 7, 8],
+    own: [7, 8],
+    rival: [0, 1, 5, 6, 10, 11],
+    changing: [0, 1, 6],
+    locked: [],
+  },
+  corner: {
+    word: "ROOT",
+    letters: "ROAINOTSELCDMPUBGHKYFJQVX".slice(0, 25).split(""),
+    selected: [0, 1, 5, 6],
+    own: [],
+    rival: [],
+    changing: [],
+    locked: [0],
+  },
+  defend: {
+    word: "SHIELD",
+    letters: "SHAREIELD OCTMPUBGKYFJQVXZ".replace(/\s/g, "").slice(0, 25).split(""),
+    selected: [0, 1, 5, 6, 7, 8],
+    own: [],
+    rival: [3, 4, 9, 13, 14, 19],
+    changing: [],
+    locked: [0, 1],
+  },
+} as const;
+
+const hasTutorialTile = (tiles: readonly number[], tile: number) => tiles.includes(tile);
 
 function TutorialDemo({ kind }: { kind: typeof TUTORIAL_SLIDES[number]["kind"] }) {
   if (kind === "words") return (
@@ -340,23 +379,16 @@ function TutorialDemo({ kind }: { kind: typeof TUTORIAL_SLIDES[number]["kind"] }
       <div className="compound-build"><span>RAIN</span><i>+</i><span>COAT</span><i>→</i><strong>RAINCOAT</strong></div>
     </div>
   );
-  const own = kind === "claim" ? [12, 6, 18, 1, 24]
-    : kind === "steal" ? [18, 20, 21]
-      : kind === "corner" ? [0, 1, 5, 6]
-        : [0, 1, 5, 6, 7, 11, 12];
-  const rival = kind === "steal" ? [0, 1, 5, 6, 10, 11]
-    : kind === "defend" ? [3, 4, 8, 9, 13, 14, 19] : [];
-  const changing = kind === "steal" ? [1, 6, 11] : kind === "defend" ? [8, 13] : [];
+  const demo = TUTORIAL_DEMOS[kind];
   return (
     <div className={`tutorial-demo demo-${kind}`} aria-hidden="true">
-      {kind === "claim" && <div className="demo-word"><b>SCORE</b><span>claims 5</span></div>}
-      {kind === "steal" && <div className="swing-score"><b>YOU +1</b><span>RIVAL −1</span></div>}
+      <div className="tutorial-wordline"><span>PLAY</span><strong>{demo.word}</strong></div>
       <div className="tutorial-board">
-        {DEMO_LETTERS.map((letter, i) => <span
-          className={`${own.includes(i) ? "demo-own" : ""} ${rival.includes(i) ? "demo-rival" : ""} ${changing.includes(i) ? "demo-changing" : ""} ${kind === "corner" && i === 0 ? "demo-locked" : ""}`}
+        {demo.letters.map((letter, i) => <span
+          className={`${hasTutorialTile(demo.own, i) ? "demo-own" : ""} ${hasTutorialTile(demo.rival, i) ? "demo-rival" : ""} ${hasTutorialTile(demo.selected, i) ? "demo-selected" : ""} ${hasTutorialTile(demo.changing, i) ? "demo-changing" : ""} ${hasTutorialTile(demo.locked, i) ? "demo-locks" : ""}`}
           key={i}
-          style={{ "--tile-delay": `${(i % 5) * .13}s` } as CSSProperties}
-        >{letter}{kind === "corner" && i === 0 && <i>◆</i>}</span>)}
+          style={{ "--tile-delay": `${Math.max(0, (demo.selected as readonly number[]).indexOf(i)) * .2}s` } as CSSProperties}
+        >{letter}{hasTutorialTile(demo.locked, i) && <i>◆</i>}</span>)}
       </div>
     </div>
   );
