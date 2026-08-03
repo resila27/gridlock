@@ -57,6 +57,7 @@ const COMPOUND_WORD_SET = new Set(COMPOUND_WORDS);
 const EXTENDED_WORD_SET = new Set(EXTENDED_WORDS);
 const CLIENT_SUPPLEMENTAL_WORDS = new Set([
   "motherboard", "motherboards", "masturbated",
+  "agreement", "agreements",
   "release", "releases", "released", "releasing",
   "salesman", "salesmen", "saleswoman", "saleswomen", "salesperson", "salespeople",
 ]);
