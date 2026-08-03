@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import { AccountModal } from "./AccountModal";
-import { STRATEGY_WORDS } from "./strategy-words";
+import { COMPOUND_WORDS, EXTENDED_WORDS, STRATEGY_WORDS } from "./strategy-words";
 import {
   getAccountStatus,
   logout,
@@ -48,6 +48,8 @@ yard year yellow yes yet you young your
 
 const BOT_WORDS = [...new Set([...WORDS, ...STRATEGY_WORDS])];
 const POWER_WORD_SET = new Set(STRATEGY_WORDS);
+const COMPOUND_WORD_SET = new Set(COMPOUND_WORDS);
+const EXTENDED_WORD_SET = new Set(EXTENDED_WORDS);
 const CLIENT_SUPPLEMENTAL_WORDS = new Set(["motherboard", "motherboards", "masturbated"]);
 
 const ORTHO = [[-1,-1],[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0],[1,1]];
@@ -74,6 +76,18 @@ const DAILY_LAUNCH_DATE = "2026-08-02";
 
 function blocksPlayedWord(candidate: string, playedWords: Iterable<string>) {
   return [...playedWords].some(previous => previous === candidate || previous.startsWith(candidate));
+}
+
+const WORD_PREFIXES = ["re", "un", "mis", "dis", "pre", "out", "over"];
+const WORD_SUFFIXES = ["s", "es", "ed", "ing", "er", "ers", "est", "ly", "ness", "less", "ful"];
+
+function isLongerForm(longer: string, shorter: string) {
+  if (longer.length <= shorter.length) return false;
+  if (WORD_PREFIXES.some(prefix => longer === `${prefix}${shorter}`)) return true;
+  if (WORD_SUFFIXES.some(suffix => longer === `${shorter}${suffix}`)) return true;
+  if (shorter.endsWith("e") && longer === `${shorter.slice(0, -1)}ing`) return true;
+  if (shorter.endsWith("y") && longer === `${shorter.slice(0, -1)}ies`) return true;
+  return false;
 }
 
 function monthKey(date: string) {
@@ -289,8 +303,12 @@ function bestReplySwing(source: Owner[], letters: string[], usedWords: Set<strin
 
 export function selectRivalMove(sourceOwners: Owner[], sourcePlayed: PlayedWord[], letters: string[], difficulty: Difficulty, deterministic = false) {
   const usedWords = new Set(sourcePlayed.map(play => play.word));
-  const maxLength = difficulty === "fierce" ? 15 : difficulty === "clever" ? 8 : 6;
-  const candidates = BOT_WORDS.filter(word => word.length >= 3 && word.length <= maxLength && !blocksPlayedWord(word, usedWords) && (difficulty === "fierce" || !POWER_WORD_SET.has(word)) && canForm(word, letters));
+  const compoundAlreadyPlayed = sourcePlayed.some(play => play.owner === 2 && COMPOUND_WORD_SET.has(play.word));
+  const maxLength = difficulty === "fierce" ? 15 : difficulty === "clever" ? 10 : 6;
+  const availableCandidates = BOT_WORDS.filter(word => word.length >= 3 && word.length <= maxLength && !blocksPlayedWord(word, usedWords) && (difficulty === "fierce" || !COMPOUND_WORD_SET.has(word) || !compoundAlreadyPlayed) && canForm(word, letters));
+  const candidates = difficulty === "clever"
+    ? availableCandidates.filter(word => !availableCandidates.some(longer => isLongerForm(longer, word)))
+    : availableCandidates;
   const scoreCandidate = (word: string, ids: number[]) => {
     const protectedNow = protectedTiles(sourceOwners);
     const captures = ids.filter(i => sourceOwners[i] === 1 && !protectedNow[i]).length;
@@ -303,7 +321,7 @@ export function selectRivalMove(sourceOwners: Owner[], sourcePlayed: PlayedWord[
     const score = difficulty === "fierce"
       ? strategicSwing * 1.65 + cornerSwing * 1.8 + captures * 9 + word.length * .8 + powerBonus
       : difficulty === "clever"
-        ? swing * .5 + captures * 3.4 + open * .65 + word.length * .4
+        ? swing * .62 + captures * 4.1 + open * .65 + word.length * .72 + (EXTENDED_WORD_SET.has(word) ? 2.4 : 0) + (COMPOUND_WORD_SET.has(word) ? 1.2 : 0)
         : word.length + captures * 1.5 + open * .5 + Math.random() * 4;
     return { word, ids, nextOwners, score, captures };
   };
@@ -320,8 +338,8 @@ export function selectRivalMove(sourceOwners: Owner[], sourcePlayed: PlayedWord[
       })).sort((a, b) => b.score - a.score)
     : ranked;
   const pool = difficulty === "relaxed" ? strategic.filter(move => move.word.length <= 5).slice(0, 18)
-    : difficulty === "clever" ? strategic.slice(0, deterministic ? 7 : 10) : strategic.slice(0, 1);
-  return deterministic ? pool[Math.min(2, pool.length - 1)] ?? ranked[0] ?? null
+    : difficulty === "clever" ? strategic.slice(0, deterministic ? 5 : 7) : strategic.slice(0, 1);
+  return deterministic ? pool[Math.min(1, pool.length - 1)] ?? ranked[0] ?? null
     : pool[Math.floor(Math.random() * Math.max(pool.length, 1))] ?? ranked[0] ?? null;
 }
 

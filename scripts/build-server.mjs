@@ -8,7 +8,7 @@ const source = await readFile(path.join(root, "app", "word-list.ts"), "utf8");
 const encoded = source.match(/=\s*(\[[\s\S]*\]);\s*$/)?.[1];
 if (!encoded) throw new Error("GRIDLOCK dictionary source could not be read.");
 const strategySource = await readFile(path.join(root, "app", "strategy-words.ts"), "utf8");
-const strategyEncoded = strategySource.match(/`([\s\S]*?)`\.trim\(\)\.split/)?.[1];
+const strategyEncoded = [...strategySource.matchAll(/`([\s\S]*?)`\.trim\(\)\.split/g)].map(match => match[1]).join(" ");
 if (!strategyEncoded) throw new Error("GRIDLOCK strategy dictionary could not be read.");
 const supplementalWords = ["motherboard", "motherboards"];
 const words = [...new Set([...JSON.parse(encoded), ...strategyEncoded.trim().split(/\s+/), ...supplementalWords])].sort();
