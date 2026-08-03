@@ -55,7 +55,10 @@ const BOT_WORDS = [...new Set([...WORDS, ...STRATEGY_WORDS])];
 const POWER_WORD_SET = new Set(STRATEGY_WORDS);
 const COMPOUND_WORD_SET = new Set(COMPOUND_WORDS);
 const EXTENDED_WORD_SET = new Set(EXTENDED_WORDS);
-const CLIENT_SUPPLEMENTAL_WORDS = new Set(["motherboard", "motherboards", "masturbated"]);
+const CLIENT_SUPPLEMENTAL_WORDS = new Set([
+  "motherboard", "motherboards", "masturbated",
+  "salesman", "salesmen", "saleswoman", "saleswomen", "salesperson", "salespeople",
+]);
 
 const ORTHO = [[-1,-1],[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0],[1,1]];
 const CORNERS = [0, BOARD_COLUMNS - 1, BOARD_SIZE - BOARD_COLUMNS, BOARD_SIZE - 1];

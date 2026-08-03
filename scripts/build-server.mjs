@@ -10,7 +10,10 @@ if (!encoded) throw new Error("GRIDLOCK dictionary source could not be read.");
 const strategySource = await readFile(path.join(root, "app", "strategy-words.ts"), "utf8");
 const strategyEncoded = [...strategySource.matchAll(/`([\s\S]*?)`\.trim\(\)\.split/g)].map(match => match[1]).join(" ");
 if (!strategyEncoded) throw new Error("GRIDLOCK strategy dictionary could not be read.");
-const supplementalWords = ["motherboard", "motherboards"];
+const supplementalWords = [
+  "motherboard", "motherboards",
+  "salesman", "saleswoman", "salesperson",
+];
 const words = [...new Set([...JSON.parse(encoded), ...strategyEncoded.trim().split(/\s+/), ...supplementalWords])].sort();
 if (!Array.isArray(words) || words.length < 10000) throw new Error("GRIDLOCK dictionary is unexpectedly small.");
 

@@ -178,6 +178,13 @@ function inflection_roots(string $word): array {
     if (str_ends_with($word, 'est')) $add(substr($word, 0, -3), substr($word, 0, -2) . 'e');
     if (str_ends_with($word, 'ly')) $add(substr($word, 0, -2), substr($word, 0, -3) . 'y');
     if (str_ends_with($word, 'ness')) $add(substr($word, 0, -4), substr($word, 0, -5) . 'y');
+    $irregularEndings = [
+        'people' => 'person', 'children' => 'child', 'women' => 'woman', 'men' => 'man',
+        'teeth' => 'tooth', 'geese' => 'goose', 'mice' => 'mouse', 'feet' => 'foot',
+    ];
+    foreach ($irregularEndings as $plural => $singular) {
+        if (str_ends_with($word, $plural)) $add(substr($word, 0, -strlen($plural)) . $singular);
+    }
     return array_keys($roots);
 }
 
