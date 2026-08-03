@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import { AccountModal } from "./AccountModal";
+import { STRATEGY_WORDS } from "./strategy-words";
 import {
   getAccountStatus,
   logout,
@@ -45,15 +46,8 @@ wait wake walk wall want warm was wash watch water way wear week well west wet w
 yard year yellow yes yet you young your
 `.trim().split(/\s+/);
 
-// Familiar longer words make the stronger rivals both more capable and more human.
-const POWER_WORDS = `
-aircraft airplane airport backbone background backyard ballgame barefoot bathroom bedroom birthday blackbird blackout bookshelf brainstorm breakfast butterfly campground carpool catfish classroom coastline cookbook daylight dishwasher doorway downstairs driveway earphone earthquake evergreen everybody everyday everyone everything farmhouse fireplace firehouse football forecast forever friendship grandfather grandmother greenhouse haircut hallway handbook headlight heartbeat highway homework honeymoon horseplay horsepower houseboat household houseplant keyboard landmark lifetime lighthouse mailbox moonlight motorcycle newspaper nightclub nightmare nobody notebook outcome outdoors pancake playground playtime popcorn rainbow railroad raindrop rainfall raincoat rattlesnake roommate sailboat schoolhouse schoolmate seafood shipyard shoelace shortcut skateboard snowfall snowman someday somehow someone something soundtrack spaceship stairway starfish steamboat sunrise sunset sunshine tabletop teacup toothbrush toothpaste touchscreen townhouse underground upstairs waterfall weekend wheelchair wildfire wildlife windmill workbook workplace worldwide yourself
-disagree dislike download misread mistake outplayed outside overtake overtime overlook prepaid preview rebuild rebuilt replay replayed replaying remake remade restart restarted retell return rewrite rewritten unable unfair unhappy unlock unlocked unsafe update updated updates upload uploaded
-builders building buildings careful carefully colorful countless darkness fearless friendship friendships helpful hopeful hopeless kindness player players playful played playing replayable stronger strongest thoughtful thoughtless useful useless winner winners winning wonderful
-`.trim().split(/\s+/);
-
-const BOT_WORDS = [...new Set([...WORDS, ...POWER_WORDS])];
-const POWER_WORD_SET = new Set(POWER_WORDS);
+const BOT_WORDS = [...new Set([...WORDS, ...STRATEGY_WORDS])];
+const POWER_WORD_SET = new Set(STRATEGY_WORDS);
 
 const ORTHO = [[-1,-1],[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0],[1,1]];
 const CORNERS = [0, 4, 20, 24];
