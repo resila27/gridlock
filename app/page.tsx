@@ -336,19 +336,19 @@ const TUTORIAL_DEMOS = {
     word: "SCORE",
     letters: "SCAMPORELTNDEIUBGHKYFJQVX".slice(0, 25).split(""),
     selected: [0, 1, 5, 6, 7],
-    own: [],
+    own: [2],
     rival: [],
     changing: [],
-    locked: [],
+    locked: [0, 1],
     unlocking: [],
   },
   steal: {
-    word: "STONE",
-    letters: "STAIRLONEDCMPUGBHKYFJQVXZ".slice(0, 25).split(""),
-    selected: [0, 1, 6, 7, 8],
-    own: [7, 8],
-    rival: [0, 1, 5, 6, 10, 11],
-    changing: [0, 1, 6],
+    word: "STONEWALL",
+    letters: "STONEWALLRCIDPUBGHKYFJQVX".slice(0, 25).split(""),
+    selected: [0, 1, 2, 3, 4, 5, 6, 7, 8],
+    own: [],
+    rival: [0, 3, 5, 7, 12, 14],
+    changing: [0, 3, 5, 7],
     locked: [],
     unlocking: [],
   },
@@ -432,7 +432,7 @@ function TutorialModal({ page, onClose, onPage }: { page: number; onClose: () =>
         }}
       >
         <button className="tutorial-skip" onClick={onClose} type="button">Skip</button>
-        <TutorialDemo kind={slide.kind} />
+        <TutorialDemo key={slide.kind} kind={slide.kind} />
         <div className="tutorial-copy" key={slide.kind}>
           <p className="eyebrow">{slide.eyebrow}</p>
           <h2 id="tutorial-title">{slide.title}</h2>
