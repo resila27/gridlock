@@ -314,6 +314,10 @@ const TUTORIAL_SLIDES = [
     body: "Choose letters anywhere on the grid, then submit your word. Every tile you use becomes yours, so useful words are also territory moves.",
   },
   {
+    kind: "defend", eyebrow: "Think one turn ahead", title: "Protect yours. Break theirs.",
+    body: "A surrounded tile is locked while its support holds. Defend your clusters, attack the tiles supporting theirs, and remember: every move changes both players’ position.",
+  },
+  {
     kind: "steal", eyebrow: "The score swings", title: "Their loss is your gain.",
     body: "GRIDLOCK is a zero-sum fight for 25 tiles. Use a rival’s letter and it changes sides: you gain one while they lose one, making a steal twice as valuable as claiming empty space.",
   },
@@ -324,10 +328,6 @@ const TUTORIAL_SLIDES = [
   {
     kind: "words", eyebrow: "Make language work harder", title: "Stretch the word.",
     body: "Before submitting, look for a plural, prefix, or suffix. Then look again for compounds: RAIN can become RAINCOAT. Longer forms claim more tiles and open more chances to steal.",
-  },
-  {
-    kind: "defend", eyebrow: "Think one turn ahead", title: "Protect yours. Break theirs.",
-    body: "A surrounded tile is locked while its support holds. Defend your clusters, attack the tiles supporting theirs, and remember: every move changes both players’ position.",
   },
 ] as const;
 
@@ -340,6 +340,7 @@ const TUTORIAL_DEMOS = {
     rival: [],
     changing: [],
     locked: [],
+    unlocking: [],
   },
   steal: {
     word: "STONE",
@@ -349,6 +350,7 @@ const TUTORIAL_DEMOS = {
     rival: [0, 1, 5, 6, 10, 11],
     changing: [0, 1, 6],
     locked: [],
+    unlocking: [],
   },
   corner: {
     word: "ROOT",
@@ -358,15 +360,17 @@ const TUTORIAL_DEMOS = {
     rival: [],
     changing: [],
     locked: [0],
+    unlocking: [],
   },
   defend: {
     word: "SHIELD",
     letters: "SHAREIELD OCTMPUBGKYFJQVXZ".replace(/\s/g, "").slice(0, 25).split(""),
     selected: [0, 1, 5, 6, 7, 8],
     own: [],
-    rival: [3, 4, 9, 13, 14, 19],
-    changing: [],
-    locked: [0, 1],
+    rival: [0, 1, 3, 4, 5, 6, 7, 8, 9, 13, 14, 19],
+    changing: [0, 1, 5, 6, 7, 8],
+    locked: [0],
+    unlocking: [4],
   },
 } as const;
 
@@ -382,13 +386,13 @@ function TutorialDemo({ kind }: { kind: typeof TUTORIAL_SLIDES[number]["kind"] }
   const demo = TUTORIAL_DEMOS[kind];
   return (
     <div className={`tutorial-demo demo-${kind}`} aria-hidden="true">
-      <div className="tutorial-wordline"><span>PLAY</span><strong>{demo.word}</strong></div>
+      <div className="tutorial-wordline"><span>PLAY</span><strong>{demo.word}</strong>{kind === "defend" && <b className="tutorial-submit">SUBMIT</b>}</div>
       <div className="tutorial-board">
         {demo.letters.map((letter, i) => <span
-          className={`${hasTutorialTile(demo.own, i) ? "demo-own" : ""} ${hasTutorialTile(demo.rival, i) ? "demo-rival" : ""} ${hasTutorialTile(demo.selected, i) ? "demo-selected" : ""} ${hasTutorialTile(demo.changing, i) ? "demo-changing" : ""} ${hasTutorialTile(demo.locked, i) ? "demo-locks" : ""}`}
+          className={`${hasTutorialTile(demo.own, i) ? "demo-own" : ""} ${hasTutorialTile(demo.rival, i) ? "demo-rival" : ""} ${hasTutorialTile(demo.selected, i) ? "demo-selected" : ""} ${hasTutorialTile(demo.changing, i) ? "demo-changing" : ""} ${hasTutorialTile(demo.locked, i) ? "demo-locks" : ""} ${hasTutorialTile(demo.unlocking, i) ? "demo-unlocking" : ""}`}
           key={i}
           style={{ "--tile-delay": `${Math.max(0, (demo.selected as readonly number[]).indexOf(i)) * .2}s` } as CSSProperties}
-        >{letter}{hasTutorialTile(demo.locked, i) && <i>◆</i>}</span>)}
+        >{letter}{(hasTutorialTile(demo.locked, i) || hasTutorialTile(demo.unlocking, i)) && <i>◆</i>}</span>)}
       </div>
     </div>
   );
