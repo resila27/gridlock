@@ -86,10 +86,6 @@ function seededLetters(seed: string) {
   return letters;
 }
 
-function changedTiles(before: Owner[], after: Owner[]) {
-  return after.map((owner, i) => owner !== before[i] ? i : -1).filter(i => i >= 0);
-}
-
 function neighbors(index: number) {
   const row = Math.floor(index / 5), col = index % 5;
   return ORTHO.map(([dr, dc]) => [row + dr, col + dc])
@@ -485,7 +481,8 @@ export default function Home() {
   const [resultsOpen, setResultsOpen] = useState(false);
   const [shareStatus, setShareStatus] = useState("");
   const [definition, setDefinition] = useState<{ word: string; text: string; loading: boolean; source?: string } | null>(null);
-  const [recentlyClaimed, setRecentlyClaimed] = useState<number[]>([]);
+  const [claimEffect, setClaimEffect] = useState<{ tiles: number[]; stolen: number[]; locked: number[] }>({ tiles: [], stolen: [], locked: [] });
+  const [hapticsEnabled, setHapticsEnabled] = useState(() => typeof window === "undefined" || window.localStorage.getItem("gridlock-haptics") !== "off");
   const [tutorialOpen, setTutorialOpen] = useState(false);
   const [tutorialPage, setTutorialPage] = useState(0);
   const dragRef = useRef({ tileId: null as number | null, startX: 0, startY: 0, moved: false });
@@ -505,25 +502,26 @@ export default function Home() {
   const dailyCompleted = typeof window !== "undefined" && window.localStorage.getItem(`gridlock-daily-${todayKey()}`) === "complete";
   const dailyPreviewLetters = useMemo(() => seededLetters(`GRIDLOCK-${todayKey()}`), []);
 
-  const celebrateClaim = useCallback((tileIds: number[], owner: 1 | 2) => {
-    setRecentlyClaimed(tileIds);
-    window.setTimeout(() => setRecentlyClaimed([]), 650);
-    if ("vibrate" in navigator) navigator.vibrate(owner === 1 ? 18 : 10);
-    try {
-      const AudioContextClass = window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-      if (!AudioContextClass) return;
-      const context = new AudioContextClass();
-      const oscillator = context.createOscillator();
-      const gain = context.createGain();
-      oscillator.frequency.value = owner === 1 ? 520 : 310;
-      gain.gain.setValueAtTime(.035, context.currentTime);
-      gain.gain.exponentialRampToValueAtTime(.001, context.currentTime + .12);
-      oscillator.connect(gain).connect(context.destination);
-      oscillator.start();
-      oscillator.stop(context.currentTime + .12);
-      window.setTimeout(() => void context.close(), 180);
-    } catch { /* Sound is an enhancement; gameplay never depends on it. */ }
-  }, []);
+  const celebrateClaim = useCallback((wordTiles: number[], sourceOwners: Owner[], nextOwners: Owner[], owner: 1 | 2) => {
+    const changed = wordTiles.filter(tile => sourceOwners[tile] !== nextOwners[tile]);
+    const stolen = changed.filter(tile => sourceOwners[tile] !== 0 && sourceOwners[tile] !== owner);
+    const beforeLocked = protectedTiles(sourceOwners);
+    const afterLocked = protectedTiles(nextOwners);
+    const newlyLocked = afterLocked.flatMap((isLocked, tile) => isLocked && !beforeLocked[tile] && nextOwners[tile] === owner ? [tile] : []);
+    const tiles = [...new Set([...changed, ...newlyLocked])];
+    setClaimEffect({ tiles, stolen, locked: newlyLocked });
+    window.setTimeout(() => setClaimEffect({ tiles: [], stolen: [], locked: [] }), 900 + tiles.length * 70);
+    if (hapticsEnabled && "vibrate" in navigator) {
+      navigator.vibrate(newlyLocked.length ? [18, 30, 24] : stolen.length ? [15, 28, 15] : owner === 1 ? 16 : 8);
+    }
+  }, [hapticsEnabled]);
+
+  const toggleHaptics = () => {
+    const next = !hapticsEnabled;
+    setHapticsEnabled(next);
+    window.localStorage.setItem("gridlock-haptics", next ? "on" : "off");
+    if (next && "vibrate" in navigator) navigator.vibrate(12);
+  };
 
   const restoreGame = useCallback((game: SavedGame) => {
     setGameId(game.gameId);
@@ -639,7 +637,7 @@ export default function Home() {
     if (!move) { setTurn("you"); setMessage("Your turn"); return; }
     const nextOwners = move.nextOwners;
     const nextPlayed = [...sourcePlayed, { word: move.word, owner: 2 as const, captures: move.captures }];
-    celebrateClaim(changedTiles(sourceOwners, nextOwners), 2);
+    celebrateClaim(move.ids, sourceOwners, nextOwners, 2);
     setOwners(nextOwners);
     setPlayed(nextPlayed);
     const filled = nextOwners.every(Boolean);
@@ -666,8 +664,17 @@ export default function Home() {
       const result = await response.json() as { valid?: boolean };
       valid = response.ok && result.valid === true;
     } catch {
-      setWordError("Couldn’t check that word. Try again.");
-      return;
+      if (window.location.hostname === "127.0.0.1" || window.location.hostname === "localhost") {
+        try {
+          const previewWords = await fetch("/api/data/words.json").then(response => response.json()) as string[];
+          valid = previewWords.includes(currentWord);
+        } catch {
+          valid = BOT_WORDS.includes(currentWord);
+        }
+      } else {
+        setWordError("Couldn’t check that word. Try again.");
+        return;
+      }
     } finally {
       setValidating(false);
     }
@@ -676,7 +683,7 @@ export default function Home() {
     const captures = selected.filter(i => owners[i] === 2 && !beforeLocked[i]).length;
     const nextOwners = applyClaim(selected, 1, owners);
     const nextPlayed = [...played, { word: currentWord, owner: 1 as const, captures }];
-    celebrateClaim(changedTiles(owners, nextOwners), 1);
+    celebrateClaim(selected, owners, nextOwners, 1);
     setOwners(nextOwners);
     setPlayed(nextPlayed);
     setSelected([]);
@@ -801,6 +808,7 @@ export default function Home() {
         ))}
       </section>
       <button className="text-button" onClick={() => { setTutorialPage(0); setTutorialOpen(true); }}>How to play & strategy</button>
+      <button className="text-button haptics-toggle" aria-pressed={hapticsEnabled} onClick={toggleHaptics}>Vibration {hapticsEnabled ? "on" : "off"}</button>
     </main>{tutorialModal}{accountModal}</>
   );
 
@@ -875,8 +883,9 @@ export default function Home() {
               aria-label={`${letter}${owner === 1 ? ", yours" : owner === 2 ? ", rival’s" : ""}${locked[i] ? ", locked" : ""}`}
               aria-pressed={isSelected}
               disabled={turn !== "you"}
-              className={`tile owner-${owner} ${locked[i] ? "locked" : ""} ${isSelected ? "vacated" : ""} ${recentlyClaimed.includes(i) ? "just-claimed" : ""}`}
+              className={`tile owner-${owner} ${locked[i] ? "locked" : ""} ${isSelected ? "vacated" : ""} ${claimEffect.tiles.includes(i) ? "just-claimed" : ""} ${claimEffect.stolen.includes(i) ? "just-stolen" : ""} ${claimEffect.locked.includes(i) ? "just-locked" : ""}`}
               key={i}
+              style={{ "--claim-delay": `${Math.max(0, claimEffect.tiles.indexOf(i)) * 70}ms` } as CSSProperties}
               onClick={() => { setSelected(s => s.includes(i) ? s.filter(x => x !== i) : [...s, i]); setWordError(""); }}
             >{letter}{locked[i] && <i>◆</i>}</button>;
           })}
