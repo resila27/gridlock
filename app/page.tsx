@@ -379,7 +379,7 @@ const TUTORIAL_SLIDES = [
   },
   {
     kind: "steal", eyebrow: "The score swings", title: "Their loss is your gain.",
-    body: "GRIDLOCK is a zero-sum fight for 30 circles. Use a rival’s letter and its circle changes sides: you gain one while they lose one, making a steal twice as valuable as claiming empty space.",
+    body: "ENCIRCLE is a zero-sum fight for 30 circles. Use a rival’s letter and its circle changes sides: you gain one while they lose one, making a steal twice as valuable as claiming empty space.",
   },
   {
     kind: "corner", eyebrow: "Build a stronghold", title: "Start at an edge. Own a corner.",
@@ -713,7 +713,7 @@ export default function Home() {
     setPlayed(nextPlayed);
     const filled = nextOwners.every(Boolean);
     setTurn(filled ? "done" : "you");
-    setMessage(filled ? (nextOwners.filter(o=>o===1).length > nextOwners.filter(o=>o===2).length ? "You locked the grid!" : "The grid is claimed") : `${LABELS[difficulty].name} played ${move.word.toUpperCase()}`);
+    setMessage(filled ? (nextOwners.filter(o=>o===1).length > nextOwners.filter(o=>o===2).length ? "You encircled the board!" : "Every circle is claimed") : `${LABELS[difficulty].name} played ${move.word.toUpperCase()}`);
     if (filled) {
       if (mode === "daily" && dailyDate) window.localStorage.setItem(`gridlock-daily-${dailyDate}`, "complete");
       window.setTimeout(() => setResultsOpen(true), 700);
@@ -761,7 +761,7 @@ export default function Home() {
     setWordError("");
     if (nextOwners.every(Boolean)) {
       setTurn("done");
-      setMessage(nextOwners.filter(o=>o===1).length > nextOwners.filter(o=>o===2).length ? "You locked the grid!" : "The grid is claimed");
+      setMessage(nextOwners.filter(o=>o===1).length > nextOwners.filter(o=>o===2).length ? "You encircled the board!" : "Every circle is claimed");
       if (mode === "daily" && dailyDate) window.localStorage.setItem(`gridlock-daily-${dailyDate}`, "complete");
       window.setTimeout(() => setResultsOpen(true), 700);
       return;
@@ -801,13 +801,13 @@ export default function Home() {
   };
 
   const shareResult = async () => {
-    const grid = Array.from({ length: BOARD_ROWS }, (_, row) => owners.slice(row * BOARD_COLUMNS, row * BOARD_COLUMNS + BOARD_COLUMNS)
-      .map(owner => owner === 1 ? "🟩" : owner === 2 ? "🟨" : "⬜").join("")).join("\n");
-    const heading = mode === "daily" && dailyDate ? `GRIDLOCK Daily ${dailyDate}` : `GRIDLOCK vs ${LABELS[difficulty].name}`;
-    const text = `${heading}\n${yourScore}–${rivalScore} ${result === "win" ? "Win" : result === "loss" ? "Loss" : "Tie"}\n${grid}\n${longestWord ? `Best word: ${longestWord.toUpperCase()}\n` : ""}https://beta.gridlockword.com`;
+    const circles = Array.from({ length: BOARD_ROWS }, (_, row) => owners.slice(row * BOARD_COLUMNS, row * BOARD_COLUMNS + BOARD_COLUMNS)
+      .map(owner => owner === 1 ? "🟢" : owner === 2 ? "🟡" : "⚪").join("")).join("\n");
+    const heading = mode === "daily" && dailyDate ? `ENCIRCLE Daily ${dailyDate}` : `ENCIRCLE vs ${LABELS[difficulty].name}`;
+    const text = `${heading}\n${yourScore}–${rivalScore} ${result === "win" ? "Win" : result === "loss" ? "Loss" : "Tie"}\n${circles}\n${longestWord ? `Best word: ${longestWord.toUpperCase()}\n` : ""}https://beta.gridlockword.com`;
     const canShare = typeof navigator.share === "function";
     try {
-      if (canShare) await navigator.share({ text, title: "My GRIDLOCK result" });
+      if (canShare) await navigator.share({ text, title: "My ENCIRCLE result" });
       else await navigator.clipboard.writeText(text);
       setShareStatus(canShare ? "Shared!" : "Copied!");
     } catch (error) {
@@ -855,21 +855,21 @@ export default function Home() {
         </div>
         <p className="eyebrow">A battle of words</p>
         <p className="beta-label">5×6 circle beta</p>
-        <h1>GRIDLOCK</h1>
-        <p className="lede">Find words. Claim the grid.<br/>Surround letters to make them yours for good.</p>
+        <h1>ENCIRCLE</h1>
+        <p className="lede">Find words. Claim circles.<br/>Surround letters to make them yours for good.</p>
       </section>
-      <button aria-label={dailyCompleted ? "Replay today’s Daily Grid" : "Play today’s Daily Grid"} className="daily-feature" onClick={() => startDaily()} type="button">
+      <button aria-label={dailyCompleted ? "Replay today’s daily challenge" : "Play today’s daily challenge"} className="daily-feature" onClick={() => startDaily()} type="button">
         <span className="daily-preview-grid" aria-hidden="true">
           {dailyPreviewLetters.map((letter, i) => <span className={i === 0 || i === 1 || i === 6 ? "preview-own" : i === 23 || i === 28 || i === 29 ? "preview-rival" : ""} key={i}>{letter}</span>)}
         </span>
         <span className="daily-feature-copy">
-          <small>Today’s grid · {new Date().toLocaleDateString(undefined, { month: "short", day: "numeric" })}</small>
-          <strong>{dailyCompleted ? "Replay today’s grid" : "Play today’s grid"}</strong>
+          <small>Today’s circles · {new Date().toLocaleDateString(undefined, { month: "short", day: "numeric" })}</small>
+          <strong>{dailyCompleted ? "Replay today’s challenge" : "Play today’s challenge"}</strong>
           <b>Same board for everyone</b>
           <i>→</i>
         </span>
       </button>
-      <button className="archive-link" onClick={() => { setArchiveMonth(monthKey(todayKey())); setScreen("archive"); }} type="button">Browse the Daily Grid archive <span>→</span></button>
+      <button className="archive-link" onClick={() => { setArchiveMonth(monthKey(todayKey())); setScreen("archive"); }} type="button">Browse the daily archive <span>→</span></button>
       <section className="level-picker" aria-labelledby="choose-level">
         <p id="choose-level" className="picker-label">Keep playing · Choose your rival</p>
         {(Object.keys(LABELS) as Difficulty[]).map(level => (
@@ -892,9 +892,9 @@ export default function Home() {
       <><main className="archive-shell">
         <header className="archive-header">
           <button className="back" onClick={() => setScreen("home")} aria-label="Back to menu">←</button>
-          <div><p className="eyebrow">Daily Grid</p><h1>Archive</h1><p>Play any grid since launch day.</p></div>
+          <div><p className="eyebrow">Daily Encircle</p><h1>Archive</h1><p>Play any challenge since launch day.</p></div>
         </header>
-        <section className="archive-picker" aria-label="Daily Grid archive">
+        <section className="archive-picker" aria-label="Daily Encircle archive">
           <div className="archive-month-nav">
             <button disabled={archiveMonth <= firstMonth} onClick={() => setArchiveMonth(month => shiftMonth(month, -1))} aria-label="Previous month">‹</button>
             <h2>{archiveMonthName}</h2>
@@ -918,7 +918,7 @@ export default function Home() {
     <><main className="rules-shell">
       <button className="back" onClick={() => setScreen("home")} aria-label="Back">←</button>
       <p className="eyebrow">Three simple rules</p>
-      <h2>Lock the grid</h2>
+      <h2>Claim the circles</h2>
       <div className="rules-list">
         <article><span>1</span><div><h3>Make a word</h3><p>Tap letters in any order. Every letter you use becomes yours.</p></div></article>
         <article><span>2</span><div><h3>Steal their letters</h3><p>Use a rival’s letter in your word and it changes to your color.</p></div></article>
@@ -932,7 +932,7 @@ export default function Home() {
     <><main className="game-shell">
       <header className="game-topbar">
         <button className="icon-button" onClick={() => setScreen("home")} aria-label="Back to menu">←</button>
-        <div className="wordmark">{mode === "daily" ? "DAILY GRID · BETA" : "GRIDLOCK · BETA"}</div>
+        <div className="wordmark">{mode === "daily" ? "ENCIRCLE DAILY · BETA" : "ENCIRCLE · BETA"}</div>
         <div className="topbar-actions">
           <button className="account-chip" onClick={() => setAccountOpen(true)} type="button">{account ? "Stats" : "Save"}</button>
           <button className="icon-button restart" onClick={() => newGame()} aria-label="New game">↻</button>
@@ -1008,8 +1008,8 @@ export default function Home() {
       <div className="modal-backdrop results-backdrop">
         <section className="results-modal" role="dialog" aria-modal="true" aria-labelledby="results-title">
           <button className="modal-close" onClick={() => setResultsOpen(false)} type="button" aria-label="Close">×</button>
-          <p className="eyebrow">{mode === "daily" ? `Daily Grid · ${dailyDate}` : `Against ${LABELS[difficulty].name}`}</p>
-          <h2 id="results-title">{result === "win" ? "Grid conquered!" : result === "loss" ? "The rival held on." : "Deadlocked."}</h2>
+          <p className="eyebrow">{mode === "daily" ? `Encircle Daily · ${dailyDate}` : `Against ${LABELS[difficulty].name}`}</p>
+          <h2 id="results-title">{result === "win" ? "Circles claimed!" : result === "loss" ? "The rival held on." : "Deadlocked."}</h2>
           <div className="final-score"><strong>{yourScore}</strong><span>–</span><strong>{rivalScore}</strong></div>
           <div className="result-highlights">
             <div><span>Best word</span><button title={longestWord.toUpperCase()} type="button" onClick={() => longestWord && void lookUpWord(longestWord)}>{longestWord ? longestWord.toUpperCase() : "—"}</button></div>

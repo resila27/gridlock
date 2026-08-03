@@ -1,5 +1,5 @@
 {
-  "name": "gridlock",
+  "name": "encircle",
   "version": "0.1.0",
   "private": true,
   "engines": {
@@ -8,6 +8,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build && node scripts/build-server.mjs",
+    "dictionary:update": "node scripts/update-wiktionary-dictionary.mjs",
     "preview": "vite preview"
   },
   "dependencies": {

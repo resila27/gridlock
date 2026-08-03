@@ -59,7 +59,7 @@ export function AccountModal({ account, stats, onClose, onLogin, onLogout }: Pro
         <button className="modal-close" onClick={onClose} type="button" aria-label="Close">×</button>
         {account ? (
           <>
-            <p className="eyebrow">Your GRIDLOCK account</p>
+            <p className="eyebrow">Your ENCIRCLE account</p>
             <h2 id="account-title">Progress saved.</h2>
             <p className="account-email">{account.email}</p>
             <div className="account-stats">
@@ -82,7 +82,7 @@ export function AccountModal({ account, stats, onClose, onLogin, onLogout }: Pro
           </>
         ) : (
           <>
-            <p className="eyebrow">Free GRIDLOCK account</p>
+            <p className="eyebrow">Free ENCIRCLE account</p>
             <h2 id="account-title">{codeSent ? "Check your email." : "Keep your progress."}</h2>
             <p>{codeSent ? `We sent a six-digit code to ${email}.` : "Log in with your email to save games and track your wins across all your devices."}</p>
             <form onSubmit={submit}>

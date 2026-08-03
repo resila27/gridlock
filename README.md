@@ -1,6 +1,6 @@
-# GRIDLOCK
+# ENCIRCLE
 
-GRIDLOCK is a strategic solo word game. Players form words from a 5×5 field, claim letters, steal unprotected rival letters, and surround tiles to lock them.
+ENCIRCLE is a strategic solo word game. Players form words from a 5×6 field of circles, claim letters, steal unprotected rival letters, and surround circles to lock them.
 
 ## Accounts
 
@@ -13,11 +13,12 @@ GRIDLOCK is a strategic solo word game. Players form words from a 5×5 field, cl
 
 ```bash
 pnpm install
+pnpm dictionary:update
 pnpm run dev
 pnpm run build
 ```
 
-The browser app is built with Vite and React. Production uses a PHP API and a private SQLite database on DreamHost. The private `gridlock-config.php` file and SQLite database live above the public web root and are never committed or deployed with the site.
+The browser app is built with Vite and React. Word validation merges the existing game list with a filtered English Wiktionary dataset generated through Kaikki/Wiktextract. Production uses a PHP API and a private SQLite database on DreamHost. The private `gridlock-config.php` file and SQLite database live above the public web root and are never committed or deployed with the site.
 
 ## 5×6 circle beta
 

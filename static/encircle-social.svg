@@ -1,0 +1,67 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <defs>
+    <filter id="paper" x="-30%" y="-30%" width="160%" height="180%">
+      <feDropShadow dx="0" dy="14" stdDeviation="14" flood-color="#17231f" flood-opacity=".18"/>
+    </filter>
+    <pattern id="grain" width="44" height="44" patternUnits="userSpaceOnUse">
+      <circle cx="5" cy="8" r=".6" fill="#17231f" opacity=".08"/>
+      <circle cx="29" cy="31" r=".5" fill="#17231f" opacity=".06"/>
+    </pattern>
+  </defs>
+  <rect width="1200" height="630" fill="#f4f0e7"/>
+  <rect width="1200" height="630" fill="url(#grain)"/>
+
+  <g transform="rotate(-3 285 315)" filter="url(#paper)">
+    <rect x="52" y="91" width="478" height="448" rx="31" fill="#ebe6dc" stroke="#bdb5a7" stroke-width="2"/>
+    <g font-family="Arial, Helvetica, sans-serif" font-size="31" font-weight="900" text-anchor="middle" dominant-baseline="central" fill="#17231f">
+      <g>
+        <circle cx="105" cy="148" r="34" fill="#b8d4ca" stroke="#7eac9d" stroke-width="2"/><text x="105" y="148">C</text>
+        <circle cx="179" cy="148" r="34" fill="#fffaf1" stroke="#d1c9bc" stroke-width="2"/><text x="179" y="148">I</text>
+        <circle cx="253" cy="148" r="34" fill="#b8d4ca" stroke="#7eac9d" stroke-width="2"/><text x="253" y="148">R</text>
+        <circle cx="327" cy="148" r="34" fill="#b8d4ca" stroke="#7eac9d" stroke-width="2"/><text x="327" y="148">C</text>
+        <circle cx="401" cy="148" r="34" fill="#fffaf1" stroke="#d1c9bc" stroke-width="2"/><text x="401" y="148">L</text>
+        <circle cx="475" cy="148" r="34" fill="#ffd06b" stroke="#dda127" stroke-width="2"/><text x="475" y="148">E</text>
+      </g>
+      <g>
+        <circle cx="105" cy="226" r="34" fill="#fffaf1" stroke="#d1c9bc" stroke-width="2"/><text x="105" y="226">W</text>
+        <circle cx="179" cy="226" r="34" fill="#b8d4ca" stroke="#7eac9d" stroke-width="2"/><text x="179" y="226">O</text>
+        <circle cx="253" cy="226" r="34" fill="#397c69" stroke="#285f50" stroke-width="2"/><text x="253" y="226" fill="#fffaf1">R</text>
+        <circle cx="327" cy="226" r="34" fill="#fffaf1" stroke="#d1c9bc" stroke-width="2"/><text x="327" y="226">D</text>
+        <circle cx="401" cy="226" r="34" fill="#ffd06b" stroke="#dda127" stroke-width="2"/><text x="401" y="226">S</text>
+        <circle cx="475" cy="226" r="34" fill="#fffaf1" stroke="#d1c9bc" stroke-width="2"/><text x="475" y="226">A</text>
+      </g>
+      <g>
+        <circle cx="105" cy="304" r="34" fill="#b8d4ca" stroke="#7eac9d" stroke-width="2"/><text x="105" y="304">B</text>
+        <circle cx="179" cy="304" r="34" fill="#fffaf1" stroke="#d1c9bc" stroke-width="2"/><text x="179" y="304">A</text>
+        <circle cx="253" cy="304" r="34" fill="#ffd06b" stroke="#dda127" stroke-width="2"/><text x="253" y="304">T</text>
+        <circle cx="327" cy="304" r="34" fill="#397c69" stroke="#285f50" stroke-width="2"/><text x="327" y="304" fill="#fffaf1">T</text>
+        <circle cx="401" cy="304" r="34" fill="#b8d4ca" stroke="#7eac9d" stroke-width="2"/><text x="401" y="304">L</text>
+        <circle cx="475" cy="304" r="34" fill="#fffaf1" stroke="#d1c9bc" stroke-width="2"/><text x="475" y="304">E</text>
+      </g>
+      <g>
+        <circle cx="105" cy="382" r="34" fill="#fffaf1" stroke="#d1c9bc" stroke-width="2"/><text x="105" y="382">O</text>
+        <circle cx="179" cy="382" r="34" fill="#ffd06b" stroke="#dda127" stroke-width="2"/><text x="179" y="382">F</text>
+        <circle cx="253" cy="382" r="34" fill="#fffaf1" stroke="#d1c9bc" stroke-width="2"/><text x="253" y="382">W</text>
+        <circle cx="327" cy="382" r="34" fill="#b8d4ca" stroke="#7eac9d" stroke-width="2"/><text x="327" y="382">O</text>
+        <circle cx="401" cy="382" r="34" fill="#397c69" stroke="#285f50" stroke-width="2"/><text x="401" y="382" fill="#fffaf1">R</text>
+        <circle cx="475" cy="382" r="34" fill="#ffd06b" stroke="#dda127" stroke-width="2"/><text x="475" y="382">D</text>
+      </g>
+      <g>
+        <circle cx="105" cy="460" r="34" fill="#397c69" stroke="#285f50" stroke-width="2"/><text x="105" y="460" fill="#fffaf1">S</text>
+        <circle cx="179" cy="460" r="34" fill="#fffaf1" stroke="#d1c9bc" stroke-width="2"/><text x="179" y="460">P</text>
+        <circle cx="253" cy="460" r="34" fill="#b8d4ca" stroke="#7eac9d" stroke-width="2"/><text x="253" y="460">L</text>
+        <circle cx="327" cy="460" r="34" fill="#fffaf1" stroke="#d1c9bc" stroke-width="2"/><text x="327" y="460">A</text>
+        <circle cx="401" cy="460" r="34" fill="#ffd06b" stroke="#dda127" stroke-width="2"/><text x="401" y="460">Y</text>
+        <circle cx="475" cy="460" r="34" fill="#b8d4ca" stroke="#7eac9d" stroke-width="2"/><text x="475" y="460">S</text>
+      </g>
+    </g>
+  </g>
+
+  <g fill="#17231f">
+    <text x="615" y="219" font-family="Arial, Helvetica, sans-serif" font-size="24" font-weight="800" letter-spacing="9">A BATTLE OF WORDS</text>
+    <text x="598" y="346" font-family="Georgia, 'Times New Roman', serif" font-size="101" font-weight="700" letter-spacing="-5">ENCIRCLE</text>
+    <circle cx="1112" cy="315" r="43" fill="none" stroke="#397c69" stroke-width="8" opacity=".9"/>
+    <circle cx="1112" cy="315" r="14" fill="#ffd06b"/>
+    <text x="620" y="414" font-family="Arial, Helvetica, sans-serif" font-size="25" font-weight="800" letter-spacing="4" fill="#5e6862">FIND WORDS. CLAIM CIRCLES.</text>
+  </g>
+</svg>

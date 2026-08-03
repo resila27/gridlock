@@ -50,4 +50,4 @@ if [ "$mode" = "--deploy" ]; then
   RSYNC_RSH="ssh $ssh_options" rsync -avz --delete --exclude '.DS_Store' "$repository/public/" "$remote:$remote_path/"
 fi
 
-echo "GRIDLOCK beta $mode succeeded at commit $head_sha"
+echo "ENCIRCLE beta $mode succeeded at commit $head_sha"

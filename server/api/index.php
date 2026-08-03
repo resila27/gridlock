@@ -275,7 +275,7 @@ try {
     if ($action === 'define-word') {
         $word = strtolower(trim((string) (body()['word'] ?? '')));
         if (!preg_match('/^[a-z]{2,30}$/', $word)) respond(['error' => 'Invalid word.'], 422);
-        $context = stream_context_create(['http' => ['timeout' => 5, 'header' => "User-Agent: GRIDLOCK/1.0\r\n"]]);
+        $context = stream_context_create(['http' => ['timeout' => 5, 'header' => "User-Agent: ENCIRCLE/1.0\r\n"]]);
         $definition = null;
         $source = null;
 
@@ -333,9 +333,9 @@ try {
             'INSERT INTO login_codes (email, code_hash, ip_hash, expires_at, created_at) VALUES (?, ?, ?, ?, ?)'
         );
         $statement->execute([$email, $codeHash, $ipHash, gmdate('Y-m-d H:i:s', time() + 600), gmdate('Y-m-d H:i:s')]);
-        $subject = 'Your GRIDLOCK login code';
-        $message = "Your GRIDLOCK code is {$code}.\n\nIt expires in 10 minutes. If you did not request it, you can ignore this email.";
-        $headers = "From: GRIDLOCK <play@typty.com>\r\nContent-Type: text/plain; charset=UTF-8";
+        $subject = 'Your ENCIRCLE login code';
+        $message = "Your ENCIRCLE code is {$code}.\n\nIt expires in 10 minutes. If you did not request it, you can ignore this email.";
+        $headers = "From: ENCIRCLE <play@typty.com>\r\nContent-Type: text/plain; charset=UTF-8";
         if (!mail($email, $subject, $message, $headers)) respond(['error' => 'We could not send the email. Please try again.'], 503);
         respond(['ok' => true]);
     }
@@ -417,6 +417,6 @@ try {
 
     respond(['error' => 'Not found.'], 404);
 } catch (Throwable $error) {
-    error_log('GRIDLOCK API: ' . $error->getMessage());
+    error_log('ENCIRCLE API: ' . $error->getMessage());
     respond(['error' => 'The server could not complete that request.'], 500);
 }
