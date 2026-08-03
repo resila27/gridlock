@@ -261,6 +261,26 @@ try {
         respond(['valid' => valid_word($word)]);
     }
 
+    if ($action === 'define-word') {
+        $word = strtolower(trim((string) (body()['word'] ?? '')));
+        if (!preg_match('/^[a-z]{2,25}$/', $word)) respond(['error' => 'Invalid word.'], 422);
+        $context = stream_context_create(['http' => ['timeout' => 5, 'header' => "User-Agent: GRIDLOCK/1.0\r\n"]]);
+        $raw = @file_get_contents('https://api.dictionaryapi.dev/api/v2/entries/en/' . rawurlencode($word), false, $context);
+        $entries = is_string($raw) ? json_decode($raw, true) : null;
+        $definition = null;
+        if (is_array($entries)) {
+            foreach (($entries[0]['meanings'] ?? []) as $meaning) {
+                foreach (($meaning['definitions'] ?? []) as $item) {
+                    if (is_string($item['definition'] ?? null) && trim($item['definition']) !== '') {
+                        $definition = trim($item['definition']);
+                        break 2;
+                    }
+                }
+            }
+        }
+        respond(['definition' => $definition]);
+    }
+
     if ($action === 'request-code') {
         $email = strtolower(trim((string) (body()['email'] ?? '')));
         if (!filter_var($email, FILTER_VALIDATE_EMAIL) || strlen($email) > 254) respond(['error' => 'Enter a valid email address.'], 422);

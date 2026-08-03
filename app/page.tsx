@@ -512,10 +512,11 @@ export default function Home() {
   const lookUpWord = async (word: string) => {
     setDefinition({ word, text: "", loading: true });
     try {
-      const response = await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(word)}`);
-      const entries = await response.json() as { meanings?: { definitions?: { definition?: string }[] }[] }[];
-      const text = entries?.[0]?.meanings?.flatMap(meaning => meaning.definitions ?? [])?.find(item => item.definition)?.definition;
-      setDefinition({ word, text: text || "No definition was found for this word.", loading: false });
+      const response = await fetch("/api/index.php?action=define-word", {
+        body: JSON.stringify({ word }), headers: { "content-type": "application/json" }, method: "POST",
+      });
+      const entry = await response.json() as { definition?: string | null };
+      setDefinition({ word, text: entry.definition || "No definition was found for this word.", loading: false });
     } catch {
       setDefinition({ word, text: "The definition is unavailable right now.", loading: false });
     }
