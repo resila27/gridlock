@@ -336,7 +336,7 @@ const TUTORIAL_DEMOS = {
     word: "SCORE",
     letters: "SCAMPORELTNDEIUBGHKYFJQVX".slice(0, 25).split(""),
     selected: [0, 1, 5, 6, 7],
-    own: [2],
+    own: [],
     rival: [],
     changing: [],
     locked: [0, 1],
