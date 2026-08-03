@@ -223,7 +223,7 @@ export function chooseTiles(word: string, letters: string[], owners: Owner[], di
           expanded.push({ picks, used, score: fiercePosition(next) + capture });
         });
       });
-      beams = expanded.sort((a, b) => b.score - a.score).slice(0, 48);
+      beams = expanded.sort((a, b) => b.score - a.score).slice(0, 24);
     }
     return beams[0]?.picks ?? [];
   }
@@ -263,7 +263,7 @@ function bestReplySwing(source: Owner[], letters: string[], usedWords: Set<strin
       return { ids, priority: word.length * 1.15 + captures * 6 + (POWER_WORD_SET.has(word) ? 2 : 0) };
     })
     .sort((a, b) => b.priority - a.priority)
-    .slice(0, 50);
+    .slice(0, 30);
   return replies.reduce((worst, reply) => {
     const after = fiercePosition(claimTiles(reply.ids, 1, source));
     return Math.max(worst, before - after);
@@ -274,8 +274,7 @@ export function selectRivalMove(sourceOwners: Owner[], sourcePlayed: PlayedWord[
   const usedWords = new Set(sourcePlayed.map(play => play.word));
   const maxLength = difficulty === "fierce" ? 15 : difficulty === "clever" ? 12 : 6;
   const candidates = BOT_WORDS.filter(word => word.length >= 3 && word.length <= maxLength && !usedWords.has(word) && canForm(word, letters));
-  const ranked = candidates.map(word => {
-    const ids = chooseTiles(word, letters, sourceOwners, difficulty);
+  const scoreCandidate = (word: string, ids: number[]) => {
     const protectedNow = protectedTiles(sourceOwners);
     const captures = ids.filter(i => sourceOwners[i] === 1 && !protectedNow[i]).length;
     const open = ids.filter(i => sourceOwners[i] === 0).length;
@@ -290,9 +289,15 @@ export function selectRivalMove(sourceOwners: Owner[], sourcePlayed: PlayedWord[
         ? swing * .72 + captures * 4.8 + open * .6 + word.length * .75 + powerBonus * .5
         : word.length + captures * 1.5 + open * .5 + Math.random() * 4;
     return { word, ids, nextOwners, score, captures };
-  }).sort((a, b) => b.score - a.score);
+  };
+  const quickDifficulty = difficulty === "fierce" ? "clever" : difficulty;
+  const quickRanked = candidates.map(word => scoreCandidate(word, chooseTiles(word, letters, sourceOwners, quickDifficulty)))
+    .sort((a, b) => b.score - a.score);
+  const ranked = difficulty === "fierce"
+    ? quickRanked.slice(0, 40).map(move => scoreCandidate(move.word, chooseTiles(move.word, letters, sourceOwners, "fierce"))).sort((a, b) => b.score - a.score)
+    : quickRanked;
   const strategic = difficulty === "fierce"
-    ? ranked.slice(0, 28).map(move => ({
+    ? ranked.slice(0, 12).map(move => ({
         ...move,
         score: move.score - bestReplySwing(move.nextOwners, letters, new Set([...usedWords, move.word])) * 1.08,
       })).sort((a, b) => b.score - a.score)
