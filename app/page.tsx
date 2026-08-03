@@ -353,13 +353,13 @@ const TUTORIAL_DEMOS = {
     unlocking: [],
   },
   corner: {
-    word: "ROOT",
+    word: "ROOTS",
     letters: "ROAINOTSELCDMPUBGHKYFJQVX".slice(0, 25).split(""),
-    selected: [0, 1, 5, 6],
-    own: [],
+    selected: [0, 1, 5, 6, 7],
+    own: [2],
     rival: [],
     changing: [],
-    locked: [0],
+    locked: [0, 1],
     unlocking: [],
   },
   defend: {
@@ -376,16 +376,30 @@ const TUTORIAL_DEMOS = {
 
 const hasTutorialTile = (tiles: readonly number[], tile: number) => tiles.includes(tile);
 
+function TutorialScore({ after, before }: { after: [number, number]; before: [number, number] }) {
+  return (
+    <div className="tutorial-score" aria-hidden="true">
+      <span>YOU <em><b>{before[0]}</b><strong>{after[0]}</strong></em></span>
+      <i>—</i>
+      <span>CLEVER <em><b>{before[1]}</b><strong>{after[1]}</strong></em></span>
+    </div>
+  );
+}
+
 function TutorialDemo({ kind }: { kind: typeof TUTORIAL_SLIDES[number]["kind"] }) {
   if (kind === "words") return (
     <div className="word-power-demo" aria-hidden="true">
+      <TutorialScore before={[4, 7]} after={[9, 5]} />
       <div className="word-grow"><span>PLAY</span><span>PLAYED</span><strong>REPLAYED</strong></div>
       <div className="compound-build"><span>RAIN</span><i>+</i><span>COAT</span><i>→</i><strong>RAINCOAT</strong></div>
     </div>
   );
   const demo = TUTORIAL_DEMOS[kind];
+  const beforeScore: [number, number] = [new Set(demo.own).size, new Set(demo.rival).size];
+  const afterScore: [number, number] = [new Set([...demo.own, ...demo.selected]).size, demo.rival.filter(tile => !hasTutorialTile(demo.selected, tile)).length];
   return (
     <div className={`tutorial-demo demo-${kind}`} aria-hidden="true">
+      <TutorialScore before={beforeScore} after={afterScore} />
       <div className="tutorial-wordline"><span>PLAY</span><strong>{demo.word}</strong>{kind === "defend" && <b className="tutorial-submit">SUBMIT</b>}</div>
       <div className="tutorial-board">
         {demo.letters.map((letter, i) => <span
