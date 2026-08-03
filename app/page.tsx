@@ -850,7 +850,7 @@ export default function Home() {
       <button className="account-chip home-account" onClick={() => setAccountOpen(true)} type="button">{account ? "My progress" : "Save progress"}</button>
       <section className="brand-block">
         <div className="mini-field" aria-hidden="true">
-          {["W","O","R","D","H","O","L","D","S"].map((l,i)=><span key={i}>{l}</span>)}
+          {[..."STARECLOUDPINGMBEACHFORYTENASR"].map((letter, i) => <span key={i}>{letter}</span>)}
         </div>
         <p className="eyebrow">A battle of words</p>
         <p className="beta-label">5×6 circle beta</p>
