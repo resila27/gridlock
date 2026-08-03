@@ -22,7 +22,7 @@ case "$mode" in
   *) usage ;;
 esac
 
-test -d "$repository/.git"
+test -e "$repository/.git"
 test -f "$key"
 test -f "$known_hosts"
 cd "$repository"
